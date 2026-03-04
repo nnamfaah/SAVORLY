@@ -1,0 +1,2 @@
+# SAVORLY
+Interaction desktop application
