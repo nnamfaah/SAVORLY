@@ -1,0 +1,438 @@
+import re 
+from Database_sor import connect
+import random
+
+
+class FoodAnalyzer:
+    def __init__(self):
+
+        self.stop_words = {"ate","with", "today", "have", "and", "for", "the", "this"}
+
+        self.portion_words = {
+            "one":1,
+            "two":2,
+            "three":3,
+            "four":4,
+            "five":5,
+            "six":6,
+            "seven":7,
+            "eight":8,
+            "nine":9,
+            "ten":10
+        }
+
+        self.food_synonyms = {
+
+            "krapow": "pad kra pao",
+            "kra pao": "pad kra pao",
+            "pad krapow": "pad kra pao",
+            "fried rice": "khao pad",
+            "papaya salad": "som tam",
+            "tom yum soup": "tom yum",
+            "thai fried noodles": "pad thai"
+        }
+
+        # Nutrients Scale: 1 - 10 relative level
+        self.food_database = {
+
+            # Carbohydrate
+            "rice": {"category":"Carbohydrate","carbs":9,"protein":2,"fat":1,"vitamins":2,"minerals":2},
+            "brown rice": {"category":"Carbohydrate","carbs":8,"protein":3,"fat":1,"vitamins":4,"minerals":4},
+            "sticky rice": {"category":"Carbohydrate","carbs":9,"protein":2,"fat":1,"vitamins":2,"minerals":2},
+            "bread": {"category":"Carbohydrate","carbs":8,"protein":3,"fat":2,"vitamins":2,"minerals":2},
+            "whole wheat bread": {"category":"Carbohydrate","carbs":7,"protein":4,"fat":2,"vitamins":4,"minerals":4},
+            "bagel": {"category":"Carbohydrate","carbs":9,"protein":4,"fat":2,"vitamins":2,"minerals":2},
+            "pasta": {"category":"Carbohydrate","carbs":8,"protein":3,"fat":2,"vitamins":2,"minerals":2},
+            "noodles": {"category":"Carbohydrate","carbs":8,"protein":3,"fat":2,"vitamins":2,"minerals":2},
+            "spaghetti": {"category":"Carbohydrate","carbs":8,"protein":3,"fat":2,"vitamins":2,"minerals":2},
+            "ramen": {"category":"Carbohydrate","carbs":8,"protein":4,"fat":4,"vitamins":2,"minerals":3},
+            "udon": {"category":"Carbohydrate","carbs":8,"protein":3,"fat":2,"vitamins":2,"minerals":2},
+            "soba": {"category":"Carbohydrate","carbs":7,"protein":4,"fat":2,"vitamins":3,"minerals":3},
+            "oatmeal": {"category":"Carbohydrate","carbs":7,"protein":5,"fat":2,"vitamins":5,"minerals":5},
+            "quinoa": {"category":"Carbohydrate","carbs":7,"protein":6,"fat":3,"vitamins":6,"minerals":6},
+            "corn": {"category":"Carbohydrate","carbs":8,"protein":3,"fat":2,"vitamins":4,"minerals":4},
+            "potato": {"category":"Carbohydrate","carbs":8,"protein":2,"fat":1,"vitamins":4,"minerals":4},
+            "sweet potato": {"category":"Carbohydrate","carbs":7,"protein":2,"fat":1,"vitamins":8,"minerals":6},
+            "taro": {"category":"Carbohydrate","carbs":7,"protein":2,"fat":1,"vitamins":4,"minerals":4},
+            "cassava": {"category":"Carbohydrate","carbs":9,"protein":1,"fat":0,"vitamins":2,"minerals":2},
+
+            # Protein
+            "egg": {"category":"Protein","carbs":1,"protein":8,"fat":6,"vitamins":5,"minerals":5},
+            "boiled egg": {"category":"Protein","carbs":1,"protein":8,"fat":5,"vitamins":5,"minerals":5},
+            "fried egg": {"category":"Protein","carbs":1,"protein":7,"fat":7,"vitamins":4,"minerals":4},
+            "chicken": {"category":"Protein","carbs":0,"protein":9,"fat":3,"vitamins":3,"minerals":4},
+            "chicken breast": {"category":"Protein","carbs":0,"protein":9,"fat":2,"vitamins":3,"minerals":4},
+            "fried chicken": {"category":"Fast Food","carbs":3,"protein":7,"fat":9,"vitamins":2,"minerals":3},
+            "grilled chicken": {"category":"Protein","carbs":0,"protein":9,"fat":2,"vitamins":4,"minerals":4},
+            "beef": {"category":"Protein","carbs":0,"protein":9,"fat":7,"vitamins":4,"minerals":6},
+            "steak": {"category":"Protein","carbs":0,"protein":9,"fat":7,"vitamins":4,"minerals":6},
+            "ground beef": {"category":"Protein","carbs":0,"protein":8,"fat":8,"vitamins":4,"minerals":6},
+            "pork": {"category":"Protein","carbs":0,"protein":8,"fat":7,"vitamins":4,"minerals":5},
+            "bacon": {"category":"Fast Food","carbs":1,"protein":6,"fat":10,"vitamins":2,"minerals":3},
+            "ham": {"category":"Protein","carbs":1,"protein":7,"fat":6,"vitamins":3,"minerals":4},
+            "salmon": {"category":"Protein","carbs":0,"protein":8,"fat":6,"vitamins":7,"minerals":6},
+            "tuna": {"category":"Protein","carbs":0,"protein":9,"fat":2,"vitamins":5,"minerals":5},
+            "shrimp": {"category":"Protein","carbs":1,"protein":8,"fat":2,"vitamins":5,"minerals":6},
+            "crab": {"category":"Protein","carbs":1,"protein":8,"fat":2,"vitamins":5,"minerals":6},
+            "lobster": {"category":"Protein","carbs":1,"protein":8,"fat":2,"vitamins":5,"minerals":6},
+            "tofu": {"category":"Plant Protein","carbs":2,"protein":7,"fat":4,"vitamins":4,"minerals":5},
+            "tempeh": {"category":"Plant Protein","carbs":3,"protein":8,"fat":4,"vitamins":5,"minerals":6},
+            "lentils": {"category":"Plant Protein","carbs":6,"protein":7,"fat":1,"vitamins":5,"minerals":6},
+            "black beans": {"category":"Plant Protein","carbs":6,"protein":7,"fat":1,"vitamins":5,"minerals":6},
+            "kidney beans": {"category":"Plant Protein","carbs":6,"protein":7,"fat":1,"vitamins":5,"minerals":6},
+
+            # Vege
+            "salad": {"category":"Vegetable","carbs":3,"protein":2,"fat":1,"vitamins":9,"minerals":8},
+            "broccoli": {"category":"Vegetable","carbs":4,"protein":3,"fat":1,"vitamins":9,"minerals":8},
+            "spinach": {"category":"Vegetable","carbs":3,"protein":3,"fat":1,"vitamins":10,"minerals":9},
+            "carrot": {"category":"Vegetable","carbs":5,"protein":1,"fat":0,"vitamins":8,"minerals":5},
+            "cabbage": {"category":"Vegetable","carbs":4,"protein":2,"fat":0,"vitamins":7,"minerals":6},
+            "cauliflower": {"category":"Vegetable","carbs":4,"protein":2,"fat":1,"vitamins":7,"minerals":6},
+            "cucumber": {"category":"Vegetable","carbs":2,"protein":1,"fat":0,"vitamins":5,"minerals":4},
+            "tomato": {"category":"Vegetable","carbs":3,"protein":1,"fat":0,"vitamins":7,"minerals":5},
+            "bell pepper": {"category":"Vegetable","carbs":3,"protein":1,"fat":0,"vitamins":8,"minerals":5},
+            "onion": {"category":"Vegetable","carbs":4,"protein":1,"fat":0,"vitamins":4,"minerals":3},
+            "mushroom": {"category":"Vegetable","carbs":3,"protein":3,"fat":1,"vitamins":6,"minerals":6},
+            "eggplant": {"category":"Vegetable","carbs":4,"protein":1,"fat":1,"vitamins":5,"minerals":4},
+            "zucchini": {"category":"Vegetable","carbs":3,"protein":1,"fat":0,"vitamins":6,"minerals":4},
+
+            # Fruity
+            "apple": {"category":"Fruit","carbs":7,"protein":1,"fat":0,"vitamins":7,"minerals":4},
+            "banana": {"category":"Fruit","carbs":8,"protein":1,"fat":0,"vitamins":6,"minerals":4},
+            "orange": {"category":"Fruit","carbs":6,"protein":1,"fat":0,"vitamins":9,"minerals":6},
+            "mango": {"category":"Fruit","carbs":8,"protein":1,"fat":0,"vitamins":8,"minerals":5},
+            "pineapple": {"category":"Fruit","carbs":7,"protein":1,"fat":0,"vitamins":7,"minerals":4},
+            "watermelon": {"category":"Fruit","carbs":6,"protein":1,"fat":0,"vitamins":6,"minerals":4},
+            "strawberry": {"category":"Fruit","carbs":5,"protein":1,"fat":0,"vitamins":8,"minerals":4},
+            "blueberry": {"category":"Fruit","carbs":6,"protein":1,"fat":0,"vitamins":8,"minerals":5},
+            "grape": {"category":"Fruit","carbs":7,"protein":1,"fat":0,"vitamins":6,"minerals":4},
+            "papaya": {"category":"Fruit","carbs":7,"protein":1,"fat":0,"vitamins":8,"minerals":5},
+            "dragon fruit": {"category":"Fruit","carbs":6,"protein":1,"fat":0,"vitamins":7,"minerals":5},
+            "guava": {"category":"Fruit","carbs":6,"protein":2,"fat":0,"vitamins":9,"minerals":7},
+
+            # Fast Food (Unhealthy)
+            "burger": {"category":"Fast Food","carbs":8,"protein":7,"fat":9,"vitamins":2,"minerals":3},
+            "cheeseburger": {"category":"Fast Food","carbs":8,"protein":7,"fat":9,"vitamins":2,"minerals":3},
+            "pizza": {"category":"Fast Food","carbs":8,"protein":6,"fat":8,"vitamins":2,"minerals":3},
+            "french fries": {"category":"Fast Food","carbs":9,"protein":2,"fat":8,"vitamins":2,"minerals":3},
+            "hot dog": {"category":"Fast Food","carbs":7,"protein":6,"fat":9,"vitamins":2,"minerals":3},
+            "fried rice": {"category":"Fast Food","carbs":9,"protein":5,"fat":7,"vitamins":3,"minerals":3},
+            "pad thai": {"category":"Fast Food","carbs":9,"protein":5,"fat":6,"vitamins":3,"minerals":3},
+            "nachos": {"category":"Fast Food","carbs":8,"protein":5,"fat":9,"vitamins":2,"minerals":3},
+            "taco": {"category":"Fast Food","carbs":7,"protein":6,"fat":7,"vitamins":3,"minerals":3},
+
+            # Daily
+            "milk": {"category":"Dairy","carbs":5,"protein":6,"fat":5,"vitamins":6,"minerals":7},
+            "cheese": {"category":"Dairy","carbs":2,"protein":7,"fat":9,"vitamins":4,"minerals":7},
+            "yogurt": {"category":"Dairy","carbs":4,"protein":6,"fat":4,"vitamins":6,"minerals":7},
+            "greek yogurt": {"category":"Dairy","carbs":3,"protein":9,"fat":3,"vitamins":6,"minerals":7},
+            "butter": {"category":"Dairy","carbs":0,"protein":0,"fat":10,"vitamins":2,"minerals":1},
+            "ice cream": {"category":"Dessert","carbs":9,"protein":3,"fat":8,"vitamins":2,"minerals":2},
+
+            # Drinks
+            "coffee": {"category":"Drink","carbs":0,"protein":0,"fat":0,"vitamins":1,"minerals":1},
+            "tea": {"category":"Drink","carbs":0,"protein":0,"fat":0,"vitamins":2,"minerals":1},
+            "green tea": {"category":"Drink","carbs":0,"protein":0,"fat":0,"vitamins":3,"minerals":2},
+            "orange juice": {"category":"Drink","carbs":8,"protein":1,"fat":0,"vitamins":8,"minerals":5},
+            "apple juice": {"category":"Drink","carbs":8,"protein":1,"fat":0,"vitamins":6,"minerals":4},
+            "soda": {"category":"Drink","carbs":10,"protein":0,"fat":0,"vitamins":0,"minerals":0},
+            "smoothie": {"category":"Drink","carbs":7,"protein":2,"fat":1,"vitamins":7,"minerals":6},
+
+            # Thai food specially
+            # THAI FOODS
+            "khao man gai": {"category":"Thai Food","carbs":9,"protein":7,"fat":6,"vitamins":3,"minerals":3},
+            "pad see ew": {"category":"Thai Food","carbs":9,"protein":6,"fat":6,"vitamins":3,"minerals":3},
+            "pad kra pao": {"category":"Thai Food","carbs":5,"protein":8,"fat":7,"vitamins":4,"minerals":4},
+            "pad thai": {"category":"Thai Food","carbs":9,"protein":6,"fat":6,"vitamins":3,"minerals":3},
+            "khao pad": {"category":"Thai Food","carbs":9,"protein":5,"fat":7,"vitamins":3,"minerals":3},
+            "rad na": {"category":"Thai Food","carbs":8,"protein":6,"fat":5,"vitamins":3,"minerals":3},
+            "pad woon sen": {"category":"Thai Food","carbs":7,"protein":5,"fat":5,"vitamins":3,"minerals":3},
+            "pad prik king": {"category":"Thai Food","carbs":3,"protein":7,"fat":6,"vitamins":5,"minerals":4},
+            "pad pak ruam": {"category":"Thai Food","carbs":3,"protein":3,"fat":2,"vitamins":8,"minerals":7},
+
+            "boat noodles": {"category":"Thai Food","carbs":8,"protein":6,"fat":4,"vitamins":3,"minerals":3},
+            "tom yum noodles": {"category":"Thai Food","carbs":7,"protein":6,"fat":4,"vitamins":4,"minerals":4},
+            "dry noodles": {"category":"Thai Food","carbs":8,"protein":5,"fat":3,"vitamins":3,"minerals":3},
+            "yen ta fo": {"category":"Thai Food","carbs":7,"protein":6,"fat":3,"vitamins":4,"minerals":4},
+            "glass noodle soup": {"category":"Thai Food","carbs":6,"protein":5,"fat":3,"vitamins":3,"minerals":3},
+
+            "tom yum": {"category":"Thai Food","carbs":2,"protein":6,"fat":2,"vitamins":7,"minerals":7},
+            "tom kha gai": {"category":"Thai Food","carbs":3,"protein":7,"fat":7,"vitamins":6,"minerals":6},
+            "gaeng jued": {"category":"Thai Food","carbs":2,"protein":5,"fat":2,"vitamins":6,"minerals":6},
+            "gaeng som": {"category":"Thai Food","carbs":3,"protein":6,"fat":2,"vitamins":7,"minerals":7},
+            "clear soup": {"category":"Thai Food","carbs":2,"protein":5,"fat":1,"vitamins":5,"minerals":5},
+
+            "som tam": {"category":"Thai Food","carbs":5,"protein":2,"fat":1,"vitamins":8,"minerals":7},
+            "larb": {"category":"Thai Food","carbs":3,"protein":8,"fat":5,"vitamins":5,"minerals":5},
+            "nam tok": {"category":"Thai Food","carbs":3,"protein":8,"fat":6,"vitamins":5,"minerals":5},
+            "yum woon sen": {"category":"Thai Food","carbs":6,"protein":6,"fat":3,"vitamins":5,"minerals":5},
+            "yum talay": {"category":"Thai Food","carbs":4,"protein":7,"fat":3,"vitamins":6,"minerals":6},
+
+            "green curry": {"category":"Thai Food","carbs":4,"protein":7,"fat":8,"vitamins":5,"minerals":5},
+            "red curry": {"category":"Thai Food","carbs":4,"protein":7,"fat":8,"vitamins":5,"minerals":5},
+            "yellow curry": {"category":"Thai Food","carbs":4,"protein":7,"fat":8,"vitamins":5,"minerals":5},
+            "massaman curry": {"category":"Thai Food","carbs":6,"protein":6,"fat":9,"vitamins":4,"minerals":4},
+            "panang curry": {"category":"Thai Food","carbs":4,"protein":7,"fat":9,"vitamins":4,"minerals":4},
+
+            "mango sticky rice": {"category":"Dessert","carbs":10,"protein":2,"fat":6,"vitamins":3,"minerals":3},
+            "thai custard": {"category":"Dessert","carbs":8,"protein":3,"fat":6,"vitamins":2,"minerals":2},
+            "banana roti": {"category":"Dessert","carbs":10,"protein":3,"fat":8,"vitamins":2,"minerals":2},
+            "coconut ice cream": {"category":"Dessert","carbs":9,"protein":2,"fat":8,"vitamins":2,"minerals":2},
+            "kanom krok": {"category":"Dessert","carbs":9,"protein":2,"fat":7,"vitamins":2,"minerals":2},
+
+            "thai milk tea": {"category":"Drink","carbs":10,"protein":2,"fat":4,"vitamins":1,"minerals":1},
+            "thai iced tea": {"category":"Drink","carbs":9,"protein":1,"fat":3,"vitamins":1,"minerals":1},
+            "thai iced coffee": {"category":"Drink","carbs":8,"protein":1,"fat":3,"vitamins":1,"minerals":1},
+            "cha manao": {"category":"Drink","carbs":8,"protein":0,"fat":0,"vitamins":4,"minerals":2},
+            "coconut water": {"category":"Drink","carbs":6,"protein":0,"fat":0,"vitamins":5,"minerals":5},
+        }
+    # Text Cleaning
+    def clean_text(self, text):
+        text = text.lower()
+        text = re.sub(r"[^\w\s]", "", text)
+        return text
+    
+    # Normalize word (handle plural)
+    def normalize_word(self, word):
+
+        if word.endswith("es"):
+            word = word[:-2]
+
+        elif word.endswith("s"):
+            word = word[:-1]
+
+        return word
+    
+    def normalize_food_name(self, word):
+
+        if word in self.food_synonyms:
+            return self.food_synonyms[word]
+
+        return word
+    
+    #Multi food detection
+    def detect_foods(self, text):
+
+        text = self.clean_text(text)
+        detected = []
+
+        # Check multi-word foods first
+        for food in sorted(self.food_database, key=len, reverse=True):
+            if food in text:
+                detected.append(food)
+
+        words = text.split()
+        unknown = []
+
+        for word in words:
+            normalized = self.normalize_word(word)
+            normalized = self.normalize_food_name(normalized)
+
+            if normalized in self.food_database and normalized not in detected:
+                detected.append(normalized)
+
+            elif (
+                normalized not in self.stop_words
+                and normalized not in self.food_database
+                and len(normalized) > 3
+            ):
+                unknown.append(normalized)
+
+        return detected, unknown
+
+    # Estimate unknown food 
+    def estimate_unknown(self, food_name):
+        if "juice" in food_name:
+            carbs = 8
+            protein = 1
+            fat = 0
+            vitamins = 7
+            minerals = 5
+        
+        elif "pizza" in food_name:
+            carbs = 8
+            protein = 6
+            fat = 8
+            vitamins = 2
+            minerals = 3
+
+        else:
+            carbs = random.randint(3, 7)
+            protein = random.randint(2, 6)
+            fat = random.randint(2, 6)
+            vitamins = random.randint(2, 6)
+            minerals = random.randint(2, 6)
+
+        return {
+            "category": "Estimated",
+            "carbs": carbs,
+            "protein": protein,
+            "fat": fat,
+            "vitamins": vitamins,
+            "minerals": minerals
+        }
+    # Health score calculate
+    def calculate_health_score(self, profile):
+        score = (
+            profile["vitamins"] * 0.3 +
+            profile["minerals"] * 0.3 +
+            profile["protein"] * 0.2 +
+            profile["carbs"] * 0.1 -
+            profile["fat"] * 0.2
+        )
+
+        return round(max(1, min(10, score)), 2)
+    
+    # Save to database (safe)
+    def save_food(self, name, profile, health_score):
+        conn = connect()
+        cur = conn.cursor()
+
+        cur.execute("""
+            INSERT OR IGNORE INTO foods
+            (name, category, health_score, carbs, protein, fat, vitamins, minerals)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            name.title(),
+            profile["category"],
+            health_score,
+            profile["carbs"],
+            profile["protein"],
+            profile["fat"],
+            profile["vitamins"],
+            profile["minerals"]
+        ))
+
+        conn.commit()
+        conn.close()
+
+    # Main analysis
+    def analyze(self, text):
+
+        recognized, unknown = self.detect_foods(text)
+        results = []
+
+        # recognized foods
+        for food in recognized:
+            profile = self.food_database[food]
+            health_score = self.calculate_health_score(profile)
+
+            results.append({
+                "name": food.title(),
+                "profile": profile,
+                "health_score": health_score,
+                "source": "predefine"
+            })
+        # Unknown foods
+        for food in unknown:
+            profile = self.estimate_unknown(food)
+            health_score = self.calculate_health_score(profile)
+
+            self.save_food(food, profile, health_score)
+
+            results.append({
+                "name": food.title(),
+                "profile": profile,
+                "health_score": health_score,
+                "source": "auto_estimated"
+            })
+
+        return results
+    
+    def detect_portions(self, text):
+        words = text.split()
+
+        portions = {}
+
+        for i, word in enumerate(words):
+
+            # number portion
+            if word.isdigit():
+
+                if i+1 < len(words):
+                    food = words[i+1]
+                    portions[food] = int(word)
+
+            # word portion
+            elif word in self.portion_words:
+
+                if i+1 < len(words):
+                    food = words[i+1]
+                    portions[food] = self.portion_words[word]
+
+        return portions
+    
+    def analyze(self, text):
+
+        portions = self.detect_portions(text)
+        recognized, unknown = self.detect_foods(text)
+
+        results = []
+
+        for food in recognized:
+            profile = self.food_database[food]
+            health_score = self.calculate_health_score(profile)
+            portion = portions.get(food, 1)
+
+            results.append({
+                "name": food.title(),
+                "profile": profile,
+                "health_score": health_score,
+                "portion": portion,
+                "source": "predefined"
+            })
+
+        for food in unknown:
+            profile = self.estimate_unknown(food)
+            health_score = self.calculate_health_score(profile)
+            portion = portions.get(food, 1)
+
+            self.save_food(food, profile, health_score)
+            results.append({
+                "name": food.title(),
+                "profile": profile,
+                "health_score": health_score,
+                "portion": portion,
+                "source": "auto_estimated"
+            })
+
+        return results
+    
+    def detect_portions(self, text):
+
+        words = text.split()
+        portions = {}
+
+        for i, word in enumerate(words):
+            if word.isdigit():
+
+                qty = int(word)
+                if i+1 < len(words):
+
+                    food = words[i+1]
+
+                    portions[food] = qty
+        return portions
+    
+    def detect_meal_type(self, text):
+
+        breakfast_words = ["breakfast", "morning"]
+        lunch_words = ["lunch", "noon"]
+        dinner_words = ["dinner", "evening"]
+        snack_words = ["snack"]
+
+        text = text.lower()
+
+        if any(word in text for word in breakfast_words):
+            return "breakfast"
+
+        if any(word in text for word in lunch_words):
+            return "lunch"
+
+        if any(word in text for word in dinner_words):
+            return "dinner"
+
+        if any(word in text for word in snack_words):
+            return "snack"
+
+        return "unknown"
