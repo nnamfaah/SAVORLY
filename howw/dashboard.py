@@ -12,32 +12,89 @@ import stylesheet as ss
 
 slots = ["Breakfast", "Lunch", "Dinner", "Late-night"]
 
+def _slot_from_time(dt=None) -> str:
+    h = (dt or datetime.now()).hour
+    if  5 <= h < 10: return "Breakfast"
+    if 10 <= h < 14: return "Lunch"
+    if 14 <= h < 21: return "Dinner"
+    return "Late-night"
+
+# ── Tips (single sentence output) ────────────────────────────────────────────
+_food_tips = {
+    "egg":      ("protein",  "eggs"),
+    "chicken":  ("protein",  "chicken"),
+    "yogurt":   ("protein",  "yogurt"),
+    "fish":     ("protein",  "fish"),
+    "tofu":     ("protein",  "tofu"),
+    "rice":     ("carbs",    "rice"),
+    "bread":    ("carbs",    "bread"),
+    "oat":      ("carbs",    "oats"),
+    "pasta":    ("carbs",    "pasta"),
+    "banana":   ("carbs",    "banana"),
+    "avocado":  ("fats",     "avocado"),
+    "almond":   ("fats",     "almonds"),
+    "olive":    ("fats",     "olive oil"),
+    "milk":     ("fats",     "milk"),
+    "cheese":   ("fats",     "cheese"),
+    "spinach":  ("minerals", "spinach"),
+    "broccoli": ("minerals", "broccoli"),
+    "apple":    ("fiber",    "apple"),
+    "carrot":   ("fiber",    "carrots"),
+    "bean":     ("fiber",    "beans"),
+}
+
+def _tip_sentence(foods: list) -> str:
+    if not foods:
+        return "Start adding meals to get personalised nutrition tips."
+    found = {}
+    for food in foods:
+        fl = food.lower().strip()
+        for kw, (cat, name) in _food_tips.items():
+            if kw in fl and cat not in found:
+                found[cat] = name
+    has_protein  = "protein"  in found
+    has_carbs    = "carbs"    in found
+    has_fats     = "fats"     in found
+    has_minerals = "minerals" in found
+    has_fiber    = "fiber"    in found
+
+    parts = []
+    if has_protein and has_carbs and has_fats:
+        parts.append("Great balance of protein, carbs, and fats")
+    elif has_protein and has_carbs:
+        parts.append(f"Good combo of {found['protein']} and {found['carbs']}")
+    elif has_protein:
+        parts.append(f"{found['protein'].capitalize()} gives you solid protein")
+    elif has_carbs:
+        parts.append(f"{found['carbs'].capitalize()} provides your carbs")
+    else:
+        parts.append("Looks like a light meal")
+
+    missing = []
+    if not has_protein: missing.append("a protein source like eggs or chicken")
+    if not has_fats:    missing.append("healthy fats like avocado or almonds")
+    if not has_fiber and not has_minerals: missing.append("some vegetables for minerals and fiber")
+
+    if missing:
+        parts.append("consider adding " + " and ".join(missing[:2]))
+    if has_minerals:
+        parts.append(f"{found['minerals'].capitalize()} adds great minerals to your meal")
+    if has_fiber:
+        parts.append(f"{found['fiber'].capitalize()} boosts your fiber intake")
+
+    sentence = " — ".join(parts[:2])
+    if len(parts) > 2:
+        sentence += f". {parts[2].capitalize()}."
+    else:
+        sentence += "."
+    return sentence
+
 def _slot_from_time(dt=None):
     hour = (dt or datetime.now()).hour
     if 5  <= hour < 10: return "Breakfast"
     if 10 <= hour < 14: return "Lunch"
     if 14 <= hour < 18: return "Dinner"
     if 19 <= hour: return "Late-night"
-
-# Tips
-_food_tips = {}
-_default_tips = []
-
-def _tips_for_foods(foods):
-    found = {}
-    for food in foods:
-        fl = food.lower().strip()
-        for kw, (cat, tip) in _food_tips.items():
-            if kw in fl and cat not in found:
-                found[cat] = tip
-    tips = list(found.values())
-    if not tips:
-        return list(_default_tips)
-    if "Protein" not in found:
-        tips.append("Protein looks low — try eggs, chicken, or yogurt.")
-    if "Fats" not in found:
-        tips.append("Add healthy fats like avocado or almonds.")
-    return tips[:5]
 
 # Shadow helper
 def _shadow(w, radius=12, offset=3, alpha=18):
@@ -117,62 +174,23 @@ class _MealTimeline(QWidget):
 class _RecPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setStyleSheet(ss.white_card)
-        self._active_filter = "All"; self._all_tips = list(_default_tips)
-        v = QVBoxLayout(self); v.setContentsMargins(20,18,20,18); v.setSpacing(12)
-        hdr = QHBoxLayout()
-        title = QLabel("Recommendation")
-        title.setStyleSheet(f"font-size:15px; font-weight:700; color:{ss.text}; background:transparent;")
-        hdr.addWidget(title); hdr.addStretch(); v.addLayout(hdr)
+        self.setStyleSheet("background:transparent;")
+        v = QVBoxLayout(self); v.setContentsMargins(20, 18, 20, 18); v.setSpacing(10)
+        title = QLabel("Recommendation"); title.setStyleSheet(ss.section)
+        v.addWidget(title)
+        self._tip_lbl = QLabel()
+        self._tip_lbl.setWordWrap(True)
+        self._tip_lbl.setStyleSheet(
+            f"font-size:13px; color:{ss.text}; background:transparent; line-height:1.6;")
+        self._tip_lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        v.addWidget(self._tip_lbl)
+        self._set_text([])
 
-        self._fil_btns = {}
-        fil_row = QHBoxLayout(); fil_row.setSpacing(6)
-        for f in ["All","Protein","Carbs","Fats","Balance"]:
-            btn = QPushButton(f); btn.setCheckable(True); btn.setFixedHeight(26)
-            btn.setCursor(Qt.PointingHandCursor)
-            btn.clicked.connect(lambda _, fl=f: self._set_filter(fl))
-            self._fil_btns[f] = btn; fil_row.addWidget(btn)
-        fil_row.addStretch(); v.addLayout(fil_row)
+    def update_tips(self, foods: list):
+        self._set_text(foods)
 
-        self._tips_widget = QWidget(); self._tips_widget.setStyleSheet("background:transparent;")
-        self._tips_layout = QVBoxLayout(self._tips_widget)
-        self._tips_layout.setContentsMargins(0,0,0,0); self._tips_layout.setSpacing(10)
-        scroll = QScrollArea(); scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea{border:none; background:transparent;}")
-        scroll.setWidget(self._tips_widget); v.addWidget(scroll)
-        self._refresh_filter("All")
-
-    def update_tips(self, foods):
-        self._all_tips = _tips_for_foods(foods); self._refresh_filter(self._active_filter)
-
-    def _set_filter(self, f):
-        self._active_filter = f; self._refresh_filter(f)
-
-    def _refresh_filter(self, active_filter):
-        for f, btn in self._fil_btns.items():
-            active = f == active_filter
-            btn.setChecked(active)
-            btn.setStyleSheet(
-                f"QPushButton{{padding:4px 12px; border-radius:13px; border:none; font-size:11px; font-weight:600;"
-                f"background:{ss.green if active else 'rgba(0,0,0,0.06)'};"
-                f"color:{'white' if active else ss.text_muted};}}"
-                f"QPushButton:hover{{background:{ss.light_green if not active else ss.dark_green}; color:white;}}")
-        while self._tips_layout.count():
-            item = self._tips_layout.takeAt(0)
-            if item.widget(): item.widget().deleteLater()
-        tips = self._all_tips
-        if active_filter != "All":
-            kw = active_filter.lower()
-            tips = [t for t in tips if kw in t.lower()] or ["No tips for this category yet."]
-        for tip in tips:
-            wrap = QWidget(); wrap.setStyleSheet("background:transparent;")
-            wv = QHBoxLayout(wrap); wv.setContentsMargins(0,0,0,0); wv.setSpacing(10)
-            dot = QLabel("•"); dot.setStyleSheet(f"font-size:16px; color:{ss.green}; background:transparent;")
-            lbl = QLabel(tip); lbl.setWordWrap(True)
-            lbl.setStyleSheet(f"font-size:12px; color:{ss.text}; background:transparent; line-height:1.5;")
-            wv.addWidget(dot,0,Qt.AlignTop); wv.addWidget(lbl)
-            self._tips_layout.addWidget(wrap)
-        self._tips_layout.addStretch()
+    def _set_text(self, foods):
+        self._tip_lbl.setText(_tip_sentence(foods))
 
 # Add Meals Panel
 class _AddMealsPanel(QWidget):
@@ -182,7 +200,7 @@ class _AddMealsPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setStyleSheet(ss.cream_card)
+        self.setStyleSheet("background:transparent;")
         self._current_slot = _slot_from_time()
         self._user_override = False
         self._tab_btns = {}; self._foods = []
@@ -270,33 +288,6 @@ class _AddMealsPanel(QWidget):
         )
         self._detect_label.setTextFormat(Qt.RichText)
 
-# Drag-drop panel
-slot_icons = {"Breakfast":"☀️","Lunch":"🌤️","Dinner":"🌙","Late-night":"🌛"}
-class _DragDropPanel(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setStyleSheet("background:transparent;")
-        v = QVBoxLayout(self); v.setContentsMargins(0,0,0,0); v.setSpacing(12)
-        title = QLabel("Drag & Drop to Swap Meals"); title.setStyleSheet(ss.section)
-        v.addWidget(title)
-        cols = QHBoxLayout(); cols.setSpacing(12)
-        for slot, icon in slot_icons.items():
-            col = QWidget()
-            col.setStyleSheet(f"background:{ss.white}; border-radius:{ss.radius_xl}px; border:1px solid rgba(0,0,0,0.06);")
-            col.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred); col.setMinimumHeight(140)
-            cv = QVBoxLayout(col); cv.setContentsMargins(12,12,12,12); cv.setSpacing(10)
-            hdr = QHBoxLayout()
-            ico = QLabel(icon); ico.setFixedSize(34,34); ico.setAlignment(Qt.AlignCenter)
-            ico.setStyleSheet(f"background:{ss.light_green}; border-radius:10px; font-size:16px;")
-            lbl = QLabel(slot); lbl.setStyleSheet(f"font-size:13px; font-weight:700; color:{ss.text}; background:transparent;")
-            hdr.addWidget(ico); hdr.addWidget(lbl); hdr.addStretch(); cv.addLayout(hdr)
-            hint = QLabel("Drop food here"); hint.setAlignment(Qt.AlignCenter)
-            hint.setStyleSheet(f"font-size:11px; color:{ss.text_muted}; background:transparent;"
-                               f"border:2px dashed {ss.brown}; border-radius:{ss.radius_md}px; padding:18px 10px;")
-            cv.addWidget(hint); cv.addStretch(); cols.addWidget(col)
-            _shadow(col, radius=10, offset=2, alpha=12)
-        v.addLayout(cols)
-
 # DashboardPage
 class DashboardPage(QWidget):
     def __init__(self, parent=None):
@@ -348,23 +339,23 @@ class DashboardPage(QWidget):
         v.addWidget(sched_card)
 
         # Add Meals card
+        meals_card = QWidget(); meals_card.setStyleSheet(ss.cream_card)
+        mv = QVBoxLayout(meals_card); mv.setContentsMargins(0,0,0,0); mv.setSpacing(0)
         self._meals_panel = _AddMealsPanel()
         self._meals_panel.slot_changed.connect(self._timeline.set_active)
-        v.addWidget(self._meals_panel)
+        mv.addWidget(self._meals_panel)
+        v.addWidget(meals_card)
 
         # Recommendation (hidden until first add)
+        self._rec_card = QWidget(); self._rec_card.setStyleSheet(ss.cream_card)
+        rv = QVBoxLayout(self._rec_card); rv.setContentsMargins(0,0,0,0); rv.setSpacing(0)
         self._rec_panel = _RecPanel()
-        self._rec_panel.setVisible(False)
+        self._rec_card.setVisible(False)
+        rv.addWidget(self._rec_panel)
         self._meals_panel.foods_changed.connect(self._rec_panel.update_tips)
-        self._meals_panel.meal_added.connect(lambda: self._rec_panel.setVisible(True))
-        v.addWidget(self._rec_panel)
-
-        # Drag & Drop (hidden until first add)
-        self._dd_panel = _DragDropPanel()
-        self._dd_panel.setVisible(False)
-        self._meals_panel.meal_added.connect(lambda: self._dd_panel.setVisible(True))
-        v.addWidget(self._dd_panel)
-
+        self._meals_panel.meal_added.connect(lambda: self._rec_card.setVisible(True))
+        v.addWidget(self._rec_card)
+        
         v.addStretch()
         scroll.setWidget(inner)
         root = QVBoxLayout(self); root.setContentsMargins(0,0,0,0); root.addWidget(scroll)
