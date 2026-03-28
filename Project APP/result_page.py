@@ -6,6 +6,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QIcon
 
+import stylesheet as ss
+
 _DIR = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -32,14 +34,17 @@ class ResultPage(QWidget):
         outer.setContentsMargins(40, 40, 40, 40)
         outer.setSpacing(0)
 
+        self.bmi = None
+        self.tdee = None
+
         # Top bar
         top_bar = QHBoxLayout()
         header_col = QVBoxLayout()
         header_col.setSpacing(6)
         title = QLabel("Settings Nutritional Profile")
-        title.setObjectName("pageTitle")
+        title.setStyleSheet(ss.page_title)
         sub = QLabel("Update your physical metrics to personalize your calorie targets.")
-        sub.setObjectName("pageSubtitle")
+        sub.setStyleSheet(ss.page_subtitle)
         header_col.addWidget(title)
         header_col.addWidget(sub)
         top_bar.addLayout(header_col)
@@ -57,7 +62,7 @@ class ResultPage(QWidget):
             notif_btn.setText("🔔")
 
         avatar = QLabel("👤")
-        avatar.setObjectName("avatarLabel")
+        avatar.setStyleSheet(ss.sidebar_avatar)
         avatar.setFixedSize(36, 36)
         avatar.setAlignment(Qt.AlignCenter)
 
@@ -69,7 +74,7 @@ class ResultPage(QWidget):
 
         # Result Card
         card = QWidget()
-        card.setObjectName("resultCard")
+        card.setStyleSheet(ss.white_card)
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(30, 30, 30, 30)
         card_layout.setSpacing(20)
@@ -79,6 +84,7 @@ class ResultPage(QWidget):
         self.bmi_field.setPlaceholderText("Awaiting information...")
         self.bmi_field.setReadOnly(True)
         self.bmi_field.setFixedHeight(44)
+        self.bmi_field.setStyleSheet(ss.line_edit)
         card_layout.addWidget(self.bmi_field)
 
         card_layout.addSpacing(8)
@@ -88,6 +94,7 @@ class ResultPage(QWidget):
         self.tdee_field.setPlaceholderText("Awaiting information...")
         self.tdee_field.setReadOnly(True)
         self.tdee_field.setFixedHeight(44)
+        self.tdee_field.setStyleSheet(ss.line_edit)
         card_layout.addWidget(self.tdee_field)
 
         card_layout.addStretch()
@@ -98,6 +105,7 @@ class ResultPage(QWidget):
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.setObjectName("secondaryBtn")
         self.cancel_btn.setFixedSize(120, 40)
+        self.cancel_btn.setStyleSheet(ss.btn_primary(bg=ss.white, fg=ss.text))
         self.cancel_btn.setCursor(Qt.PointingHandCursor)
         self.cancel_btn.clicked.connect(self.cancelled.emit)
 
@@ -105,6 +113,7 @@ class ResultPage(QWidget):
         self.confirm_btn.setObjectName("primaryBtn")
         self.confirm_btn.setFixedHeight(40)
         self.confirm_btn.setMinimumWidth(200)
+        self.confirm_btn.setStyleSheet(ss.btn_primary())
         self.confirm_btn.setCursor(Qt.PointingHandCursor)
         self.confirm_btn.clicked.connect(self.confirmed.emit)
 
@@ -116,10 +125,14 @@ class ResultPage(QWidget):
         outer.addWidget(card)
         outer.addStretch()
 
-    def set_results(self, bmi: float, tdee: float):
+    def set_results(self, bmi, tdee):
+        self.bmi = bmi
+        self.tdee = tdee
         self.bmi_field.setText(f"{bmi:.2f}")
-        self.tdee_field.setText(f"{tdee:.0f} kcal/day")
+        self.tdee_field.setText(f"{tdee:.0f}")
 
     def clear_results(self):
+        self.bmi = None
+        self.tdee = None
         self.bmi_field.clear()
         self.tdee_field.clear()
