@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QTableWidget, QTableWidgetItem,
     QHeaderView, QListWidget, QInputDialog,
-    QDialog, QFrame, QGridLayout, QSizePolicy, QScrollArea
+    QDialog, QFrame, QGridLayout, QSizePolicy, QScrollArea, QLineEdit
 )
 from PySide6.QtCore import QDate, Qt, QMimeData, Signal
 from PySide6.QtGui import QFont, QDrag, QColor
@@ -293,14 +293,65 @@ class MealCell(QFrame):
     def _load_existing(self):
         for food in self._get_foods():
             self.food_list.addItem(f"{self.food_list.count()+1}. {food}")
-
     def add_food(self):
-        text,ok=QInputDialog.getText(self,"Add Food","Food name:")
-        if ok and text.strip():
-            self.food_list.addItem(f"{self.food_list.count()+1}. {text.strip()}")
-            self.parent_page.meal_data.setdefault(self.date_key,{}).setdefault(str(self.row),[]).append(text.strip())
-            self.parent_page.update_mood()
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Add Food")
+        dialog.setFixedSize(300, 150)
 
+        label = QLabel("Food name:")
+        input_field = QLineEdit()
+        input_field.setPlaceholderText("Enter food name")
+
+        ok_btn = QPushButton("OK")
+        cancel_btn = QPushButton("Cancel")
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        btn_layout.addWidget(ok_btn)
+        btn_layout.addWidget(cancel_btn)
+
+        layout = QVBoxLayout()
+        layout.addWidget(label)
+        layout.addWidget(input_field)
+        layout.addLayout(btn_layout)
+
+        dialog.setLayout(layout)
+
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #f5f5f5;
+            }
+            QLabel {
+                font-size: 14px;
+            }
+            QLineEdit {
+                padding: 6px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+            }
+            QPushButton {
+                min-width: 70px;
+                padding: 5px;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #e0e0e0;
+            }
+        """)
+
+        def on_ok():
+            text = input_field.text().strip()
+            if text:
+                self.food_list.addItem(f"{self.food_list.count()+1}. {text}")
+                self.parent_page.meal_data.setdefault(self.date_key, {}) \
+                    .setdefault(str(self.row), []).append(text)
+                self.parent_page.update_mood()
+                dialog.accept()
+
+        ok_btn.clicked.connect(on_ok)
+        cancel_btn.clicked.connect(dialog.reject)
+
+        dialog.exec_()
     def delete_food(self, item):
         name=item.text().split(". ",1)[1]
         foods=self.parent_page.meal_data.get(self.date_key,{}).get(str(self.row),[])
