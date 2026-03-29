@@ -7,8 +7,8 @@ from PySide6.QtWidgets import (
     QHeaderView, QListWidget, QInputDialog,
     QDialog, QFrame, QGridLayout, QSizePolicy, QScrollArea, QLineEdit
 )
-from PySide6.QtCore import QDate, Qt, QMimeData, Signal
-from PySide6.QtGui import QFont, QDrag, QColor
+from PySide6.QtCore import QDate, Qt, QMimeData, Signal, QRect
+from PySide6.QtGui import QFont, QDrag, QColor, QPainter, QPen
 
 #Calendar Popup
 class CalendarDialog(QDialog):
@@ -278,11 +278,9 @@ class MealCell(QFrame):
     def paintEvent(self, e):
         super().paintEvent(e)
         if self._col_hovered:
-            from PySide6.QtGui import QPainter, QColor
             p = QPainter(self)
             p.setBrush(QColor(255, 255, 255, 35))
             p.setPen(QColor(80, 120, 70, 140))
-            from PySide6.QtCore import QRect
             r = self.rect().adjusted(1, 1, -1, -1)
             p.drawRoundedRect(r, 10, 10)
             p.end()
@@ -294,7 +292,7 @@ class MealCell(QFrame):
         for food in self._get_foods():
             self.food_list.addItem(f"{self.food_list.count()+1}. {food}")
     def add_food(self):
-        dialog = QDialog(self)
+        dialog = QDialog()        
         dialog.setWindowTitle("Add Food")
         dialog.setFixedSize(300, 150)
 
@@ -314,7 +312,6 @@ class MealCell(QFrame):
         layout.addWidget(label)
         layout.addWidget(input_field)
         layout.addLayout(btn_layout)
-
         dialog.setLayout(layout)
 
         dialog.setStyleSheet("""
@@ -323,19 +320,35 @@ class MealCell(QFrame):
             }
             QLabel {
                 font-size: 14px;
+                color: #2d3a2e;
+                background-color: #f5f5f5;
             }
             QLineEdit {
                 padding: 6px;
-                border: 1px solid #ccc;
+                border: 1px solid #b0b8b0;
                 border-radius: 4px;
+                background-color: #ffffff;
+                color: #1a2b1b;
+                font-size: 13px;
+            }
+            QLineEdit:focus {
+                border: 1.5px solid #a8bb96;
             }
             QPushButton {
                 min-width: 70px;
-                padding: 5px;
+                padding: 5px 12px;
                 border-radius: 6px;
+                background-color: #a8bb96;
+                color: #ffffff;
+                border: none;
+                font-size: 12px;
+                font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #e0e0e0;
+                background-color: #8faa7a;
+            }
+            QPushButton:pressed {
+                background-color: #3d5240;
             }
         """)
 
@@ -350,8 +363,8 @@ class MealCell(QFrame):
 
         ok_btn.clicked.connect(on_ok)
         cancel_btn.clicked.connect(dialog.reject)
-
         dialog.exec_()
+    
     def delete_food(self, item):
         name=item.text().split(". ",1)[1]
         foods=self.parent_page.meal_data.get(self.date_key,{}).get(str(self.row),[])
@@ -428,7 +441,6 @@ class ClickableHeader(QHeaderView):
     def paintSection(self, painter, rect, logical_index):
         super().paintSection(painter, rect, logical_index)
         if logical_index > 0 and logical_index == self._hovered_col:
-            from PySide6.QtGui import QColor, QPen
             painter.save()
             painter.fillRect(rect, QColor(61, 82, 64, 55))
             pen = QPen(QColor(61, 82, 64, 200)); pen.setWidth(2)
