@@ -8,8 +8,13 @@ from PySide6.QtGui import QIcon, QPixmap
 import stylesheet as ss
 from dashboard import DashboardPage
 from weekly import WeeklySummaryPage
+import os
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-def _logo_label(size: int = 48) -> QLabel:
+def _px(name):
+    return QPixmap(os.path.join(BASE_DIR, name))
+
+def _logo_label(size: int = 40) -> QLabel:
     lbl = QLabel()
     lbl.setFixedSize(size, size)
     lbl.setAlignment(Qt.AlignCenter)
@@ -17,14 +22,10 @@ def _logo_label(size: int = 48) -> QLabel:
         f"background-color: {ss.dark_green};"
         f"border-radius: {size // 4}px;"
     )
-    px = QPixmap("savorly.png")
+    px = _px("savorly.png")
     if not px.isNull():
-        icon_size = int(size * 0.68)
-        px = px.scaled(icon_size, icon_size,
-                       Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        lbl.setPixmap(px)
-    else:
-        lbl.setText("🍴")
+        inner = size - 16
+        lbl.setPixmap(px.scaled(inner, inner, Qt.KeepAspectRatio, Qt.SmoothTransformation))
     return lbl
 
 nav_bar = [
@@ -69,7 +70,7 @@ class Sidebar(QWidget):
             btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             btn.setFixedHeight(42)
             btn.setIconSize(QSize(20, 20))
-            px = QPixmap(icon_file)
+            px = _px(icon_file)
             if not px.isNull():
                 btn.setIcon(QIcon(px))
             self._nav_buttons[page_id] = btn
