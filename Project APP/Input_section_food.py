@@ -1,8 +1,19 @@
 import re
-from models import FoodInput
+from Models import FoodInput
 
 
 class InputProcessor:
+    def __init__(self):
+        self.portions = ["small", "medium", "large", "extra large"]
+
+        self.meals = ["breakfast", "lunch", "dinner", "snack"]
+
+        self.time_words = {
+            "morning": "morning",
+            "afternoon": "afternoon",
+            "evening": "evening",
+            "night": "night"
+        }
 
     def clean_text(self, text):
         text = text.lower()
@@ -11,9 +22,7 @@ class InputProcessor:
 
     def detect_portion(self, text):
 
-        portions = ["small", "medium", "large", "extra large"]
-
-        for p in portions:
+        for p in self.portions:
             if p in text:
                 return p
 
@@ -21,9 +30,7 @@ class InputProcessor:
 
     def detect_meal(self, text):
 
-        meals = ["breakfast", "lunch", "dinner", "snack"]
-
-        for m in meals:
+        for m in self.meals:
             if m in text:
                 return m
 
@@ -31,17 +38,31 @@ class InputProcessor:
 
     def detect_time(self, text):
 
-        if "morning" in text:
-            return "morning"
-
-        if "afternoon" in text:
-            return "afternoon"
-
-        if "night" in text:
-            return "night"
+        for word in self.time_words:
+            if word in text:
+                return self.time_words[word]
 
         return "unknown"
+    
+    def detect_quantity(self, text):
 
+        quantity_words = {
+            "one":1,
+            "two":2,
+            "three":3,
+            "four":4,
+            "five":5
+        }
+
+        for word in text.split():
+            if word.isdigit():
+                return int(word)
+
+            if word in quantity_words:
+                return quantity_words[word]
+
+        return 1
+    
     def process(self, text):
 
         cleaned = self.clean_text(text)
@@ -50,5 +71,6 @@ class InputProcessor:
             food_text=cleaned,
             portion=self.detect_portion(cleaned),
             meal_type=self.detect_meal(cleaned),
-            time_of_day=self.detect_time(cleaned)
+            time_of_day=self.detect_time(cleaned),
+            quantity = self.detect_quantity(cleaned)
         )
