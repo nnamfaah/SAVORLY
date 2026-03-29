@@ -60,7 +60,6 @@ class DailyMealsSubPage(QWidget):
         self._refresh()
 
     # ── Header ────────────────────────────────────────────────────────────
-
     def _build_header(self):
         hdr = QHBoxLayout()
         col = QVBoxLayout()
@@ -73,7 +72,6 @@ class DailyMealsSubPage(QWidget):
         self._v.addLayout(hdr)
 
     # ── Date navigator ────────────────────────────────────────────────────
-
     def _build_date_nav(self):
         row = QHBoxLayout()
         row.addStretch()
@@ -90,7 +88,6 @@ class DailyMealsSubPage(QWidget):
         self._btn_prev.clicked.connect(self._go_prev)
         self._btn_next.clicked.connect(self._go_next)
 
-        # ปุ่มปฏิทิน 📅 → ไปหน้า Weekly Meals (อยู่ระหว่าง ‹ และวันที่)
         cal_btn = QPushButton("📅")
         cal_btn.setFixedSize(32, 32)
         cal_btn.setCursor(Qt.PointingHandCursor)
@@ -114,7 +111,6 @@ class DailyMealsSubPage(QWidget):
         self._v.addLayout(row)
 
     # ── Body ──────────────────────────────────────────────────────────────
-
     def _build_body(self):
         body = QHBoxLayout()
         body.setSpacing(24)
@@ -193,7 +189,6 @@ class DailyMealsSubPage(QWidget):
         return c
 
     # ── Refresh ───────────────────────────────────────────────────────────
-
     def _refresh(self):
         self._date_lbl.setText(self._current_date.toString("dddd, d MMM"))
 

@@ -6,7 +6,6 @@ from PySide6.QtCore import Qt, QDate, Signal
 from PySide6.QtGui import QFont
 import stylesheet as ss
 
-
 # ── Mood data ─────────────────────────────────────────────────────────────
 # (week_start, mood_label, emoji, energy_text, advice)
 MOOD_DATA = [
@@ -30,7 +29,6 @@ MOOD_DATA = [
     ),
 ]
 
-
 def _week_label(start: QDate) -> str:
     end = start.addDays(6)
     return f"{start.toString('MMM d')} - {end.toString('MMM d, yyyy')}"
@@ -41,10 +39,8 @@ def _label(text: str, style: str) -> QLabel:
     lbl.setStyleSheet(style)
     return lbl
 
-
 class WeeklyMoodSubPage(QWidget):
     """Weekly Mood & Activity Insight sub-page."""
-    # Signal: คลิกปฏิทิน → ไปหน้า weekly_meal
     go_to_weekly_meal = Signal()
 
     def __init__(self, parent=None):
@@ -93,7 +89,6 @@ class WeeklyMoodSubPage(QWidget):
             "font-size:14px; font-weight:600; color:#333; padding:0 12px;"
         )
 
-        # ปุ่มปฏิทิน → ไปหน้า weekly_meal
         self._cal_btn = QPushButton("📅")
         self._cal_btn.setFixedSize(32, 32)
         self._cal_btn.setCursor(Qt.PointingHandCursor)
@@ -123,7 +118,6 @@ class WeeklyMoodSubPage(QWidget):
         self._refresh()
 
     # ── Mood card ─────────────────────────────────────────────────────────
-
     def _build_mood_card(self) -> QFrame:
         outer = QFrame()
         outer.setStyleSheet("QFrame { background:#c5d6b2; border-radius:20px; }")
@@ -202,7 +196,6 @@ class WeeklyMoodSubPage(QWidget):
         return outer
 
     # ── Refresh ───────────────────────────────────────────────────────────
-
     def _refresh(self):
         start, mood, emoji, energy, advice = MOOD_DATA[self._idx]
 

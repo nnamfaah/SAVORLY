@@ -97,7 +97,7 @@ class DetailPopup(QDialog):
 class FoodList(QListWidget):
     def __init__(self, meal_cell=None):
         super().__init__()
-        self.meal_cell = meal_cell  # ref กลับ MealCell เพื่อบันทึก meal_data
+        self.meal_cell = meal_cell
         self.setDragEnabled(True); self.setAcceptDrops(True)
         self.setDefaultDropAction(Qt.CopyAction)
 
@@ -118,7 +118,7 @@ class FoodList(QListWidget):
         # บันทึกลง meal_data
         if self.meal_cell:
             mc = self.meal_cell
-            mc.parent_page.meal_data                 .setdefault(mc.date_key, {})                 .setdefault(str(mc.row), [])                 .append(food)
+            mc.parent_page.meal_data.setdefault(mc.date_key, {}).setdefault(str(mc.row), []).append(food)
             mc.parent_page.update_mood()
 
 
@@ -183,7 +183,7 @@ class ClickableHeader(QHeaderView):
     def __init__(self, orientation, parent=None):
         super().__init__(orientation, parent)
         self.setMouseTracking(True)
-        self.viewport().setMouseTracking(True)   # ← cursor เปลี่ยนบน viewport ด้วย
+        self.viewport().setMouseTracking(True)
         self.setSectionsClickable(True)
         self._hovered_col = -1
 
@@ -195,7 +195,7 @@ class ClickableHeader(QHeaderView):
             self.col_hovered.emit(col if col > 0 else -1)
         cur = Qt.PointingHandCursor if col > 0 else Qt.ArrowCursor
         self.setCursor(cur)
-        self.viewport().setCursor(cur)           # ← เซ็ต cursor บน viewport ด้วย
+        self.viewport().setCursor(cur)
         super().mouseMoveEvent(e)
 
     def leaveEvent(self, e):
@@ -212,9 +212,7 @@ class ClickableHeader(QHeaderView):
         if logical_index > 0 and logical_index == self._hovered_col:
             from PySide6.QtGui import QColor, QPen
             painter.save()
-            # สีพื้น hover
             painter.fillRect(rect, QColor(61, 82, 64, 55))
-            # เส้นขีดใต้สีเขียวเข้ม
             pen = QPen(QColor(61, 82, 64, 200))
             pen.setWidth(2)
             painter.setPen(pen)
