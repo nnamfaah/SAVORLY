@@ -1,9 +1,6 @@
 import sys
 import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "..", "Project APP"))
-
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QStackedWidget,
 )
@@ -15,7 +12,6 @@ from week_meals_window import MealPlannerPage
 
 
 # ── WeeklySummaryPage  (used by mainwindow.py) ────────────────────────────
-
 class WeeklySummaryPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
