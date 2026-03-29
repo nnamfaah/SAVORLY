@@ -126,12 +126,9 @@ class MealCell(QFrame):
     def __init__(self, meal_name, row, col, parent_page, date_key):
         super().__init__()
         self.row=row; self.col=col; self.parent_page=parent_page; self.date_key=date_key
+        self._col_hovered = False
         self.setObjectName(f"cell_{row}_{col}")
-        self._base_style  = f"QFrame#cell_{row}_{col}{{background-color:#a8bb96;border-radius:10px;}}"
-        self._hover_style = f"QFrame#cell_{row}_{col}{{background-color:#8faa7a;border-radius:10px;border:2px solid #6b8f5a;}}"
-        self.setStyleSheet(self._base_style)
-        self.setCursor(Qt.PointingHandCursor)
-        self.setToolTip("Click to view daily meals for this day")
+        self.setStyleSheet(f"QFrame#cell_{row}_{col}{{background-color:#a8bb96;border-radius:10px;}}")
         lay=QVBoxLayout(self); lay.setContentsMargins(5,5,5,5); lay.setSpacing(3); lay.setAlignment(Qt.AlignCenter)
         self.food_list=FoodList(meal_cell=self); self.food_list.setMaximumHeight(50)
         self.food_list.setStyleSheet("background:transparent;border:none;"); lay.addWidget(self.food_list)
@@ -142,24 +139,22 @@ class MealCell(QFrame):
         lay.addWidget(self.add_btn,alignment=Qt.AlignCenter); self.add_btn.clicked.connect(self.add_food)
         self._load_existing()
 
-    def enterEvent(self, e):
-        self.setStyleSheet(self._hover_style)
-        super().enterEvent(e)
+    def set_col_hover(self, active: bool):
+        if self._col_hovered != active:
+            self._col_hovered = active
+            self.update()
 
-    def leaveEvent(self, e):
-        self.setStyleSheet(self._base_style)
-        super().leaveEvent(e)
-
-    def mousePressEvent(self, e):
-        if e.button() == Qt.LeftButton:
-            # only navigate if click is NOT on the add_btn or food_list
-            child = self.childAt(e.pos())
-            if child is None or (child is not self.add_btn and not isinstance(child, FoodList)):
-                dt = datetime.strptime(self.date_key, "%Y-%m-%d")
-                qd = QDate(dt.year, dt.month, dt.day)
-                self.parent_page.go_to_daily.emit(qd)
-                return
-        super().mousePressEvent(e)
+    def paintEvent(self, e):
+        super().paintEvent(e)
+        if self._col_hovered:
+            from PySide6.QtGui import QPainter, QColor
+            p = QPainter(self)
+            p.setBrush(QColor(255, 255, 255, 35))
+            p.setPen(QColor(80, 120, 70, 140))
+            from PySide6.QtCore import QRect
+            r = self.rect().adjusted(1, 1, -1, -1)
+            p.drawRoundedRect(r, 10, 10)
+            p.end()
 
     def _load_existing(self):
         for food in self.parent_page.meal_data.get(self.date_key,{}).get(str(self.row),[]):
@@ -183,31 +178,47 @@ class MealCell(QFrame):
         DetailPopup(item.text().split(". ",1)[1]).exec()
 
 class ClickableHeader(QHeaderView):
+    col_hovered = Signal(int)
+
     def __init__(self, orientation, parent=None):
         super().__init__(orientation, parent)
         self.setMouseTracking(True)
+        self.viewport().setMouseTracking(True)   # ← cursor เปลี่ยนบน viewport ด้วย
+        self.setSectionsClickable(True)
         self._hovered_col = -1
 
     def mouseMoveEvent(self, e):
         col = self.logicalIndexAt(e.pos())
         if col != self._hovered_col:
             self._hovered_col = col
-            self.viewport().update()
-        self.setCursor(Qt.PointingHandCursor if col > 0 else Qt.ArrowCursor)
+            self.update()
+            self.col_hovered.emit(col if col > 0 else -1)
+        cur = Qt.PointingHandCursor if col > 0 else Qt.ArrowCursor
+        self.setCursor(cur)
+        self.viewport().setCursor(cur)           # ← เซ็ต cursor บน viewport ด้วย
         super().mouseMoveEvent(e)
 
     def leaveEvent(self, e):
-        self._hovered_col = -1
-        self.viewport().update()
+        if self._hovered_col != -1:
+            self._hovered_col = -1
+            self.update()
+            self.col_hovered.emit(-1)
         self.setCursor(Qt.ArrowCursor)
+        self.viewport().setCursor(Qt.ArrowCursor)
         super().leaveEvent(e)
 
     def paintSection(self, painter, rect, logical_index):
         super().paintSection(painter, rect, logical_index)
         if logical_index > 0 and logical_index == self._hovered_col:
-            from PySide6.QtGui import QColor
+            from PySide6.QtGui import QColor, QPen
             painter.save()
-            painter.fillRect(rect, QColor(100, 140, 90, 60))
+            # สีพื้น hover
+            painter.fillRect(rect, QColor(61, 82, 64, 55))
+            # เส้นขีดใต้สีเขียวเข้ม
+            pen = QPen(QColor(61, 82, 64, 200))
+            pen.setWidth(2)
+            painter.setPen(pen)
+            painter.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
             painter.restore()
 
 #  Meal Label Cell (column 0) — แสดง icon + meal name
@@ -235,6 +246,32 @@ class MealPlannerPage(QWidget):
         self.meal_types = ["Breakfast","Lunch","Dinner","Night","Snack","Note"]
         self.meal_icons = {"Breakfast":"☀","Lunch":"≡","Dinner":"⊟","Night":"☽","Snack":"◎","Note":"☐"}
         self.meal_data = {}
+        # Lock appearance to match standalone style regardless of parent theme
+        self.setStyleSheet("""
+            MealPlannerPage { background: #f0f2ec; }
+            QTableWidget {
+                background: white; border: 1px solid #dce0d8;
+                border-radius: 14px; outline: none;
+            }
+            QTableWidget::item { background: transparent; padding: 4px; }
+            QHeaderView { background: #e8dfc8; }
+            QHeaderView::section:horizontal {
+                background: #e8dfc8; border: none;
+                border-bottom: 1px solid #dce0d8;
+                padding: 6px 4px; font-weight: bold; font-size: 11px; color: #1a2b1b;
+            }
+            QHeaderView::section:horizontal:first {
+                color: #5a6e5b; font-size: 9px; letter-spacing: 0.6px;
+                border-right: 1px solid #dce0d8;
+            }
+            QListWidget { background: transparent; border: none; outline: none; }
+            QListWidget::item {
+                background: rgba(255,255,255,0.75); border: none;
+                border-radius: 6px; padding: 2px 5px; margin: 1px;
+                color: #2d3a2e; font-size: 10px;
+            }
+            QListWidget::item:hover { background: rgba(255,255,255,0.95); }
+        """)
         self.init_ui()
 
     def init_ui(self):
@@ -296,8 +333,8 @@ class MealPlannerPage(QWidget):
         clickable_hdr = ClickableHeader(Qt.Horizontal, self.table)
         clickable_hdr.setSectionResizeMode(QHeaderView.Stretch)
         clickable_hdr.setSectionResizeMode(0, QHeaderView.Fixed)
-        clickable_hdr.setSectionsClickable(True)
         clickable_hdr.sectionClicked.connect(self._on_header_clicked)
+        clickable_hdr.col_hovered.connect(self._on_col_hovered)
         self.table.setHorizontalHeader(clickable_hdr)
         self.table.setColumnWidth(0, 110)
  
@@ -344,14 +381,19 @@ class MealPlannerPage(QWidget):
 
     def setup_cells(self):
         dks=self.get_week_date_keys()
+        self._meal_cells: dict = {c: [] for c in range(1, 8)}
         for row,meal in enumerate(self.meal_types):
-
             label_cell=MealLabelCell(self.meal_icons[meal], meal)
             self.table.setCellWidget(row, 0, label_cell)
-
             for col in range(7):
-                self.table.setCellWidget(row, col+1,
-                    MealCell(meal, row, col, self, dks[col]))
+                cell = MealCell(meal, row, col, self, dks[col])
+                self.table.setCellWidget(row, col+1, cell)
+                self._meal_cells[col+1].append(cell)
+
+    def _on_col_hovered(self, col: int):
+        for c, cells in self._meal_cells.items():
+            for cell in cells:
+                cell.set_col_hover(c == col)
 
     def prev_week(self):
         self.current_date-=timedelta(weeks=1); self.update_week()
