@@ -5,12 +5,12 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QTableWidget, QTableWidgetItem,
     QHeaderView, QListWidget, QInputDialog,
-    QDialog, QFrame, QGridLayout, QSizePolicy
+    QDialog, QFrame, QGridLayout, QSizePolicy, QScrollArea
 )
 from PySide6.QtCore import QDate, Qt, QMimeData, Signal
 from PySide6.QtGui import QFont, QDrag, QColor
 
-#  Calendar Popup Dialog
+#Calendar Popup
 class CalendarDialog(QDialog):
     date_selected = Signal(object)
     MONTH_NAMES = ["","January","February","March","April","May","June",
@@ -87,13 +87,143 @@ class CalendarDialog(QDialog):
         today=datetime.today(); self.view_date=today.replace(day=1); self.selected_date=today
         self._render_calendar(); self.date_selected.emit(today); self.accept()
 
-class DetailPopup(QDialog):
-    def __init__(self, food):
-        super().__init__(); self.setWindowTitle("Food Detail"); self.setFixedSize(200,110)
-        l=QVBoxLayout(self); t=QLabel(food); t.setFont(QFont("Segoe UI",13))
-        t.setAlignment(Qt.AlignCenter); l.addWidget(t)
+
+#Cell Detail Popup
+# แสดงรายการอาหารทั้งหมดในช่อง กดแต่ละรายการเพื่อลบ
+class CellDetailPopup(QDialog):
+    """A popup displays all food items in the list, with a delete button for each item."""
+
+    def __init__(self, meal_name, foods: list, on_delete, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setMinimumWidth(220)
+        self.setMaximumWidth(260)
+        self.on_delete = on_delete
+        self._build_ui(meal_name, foods)
+
+    def _build_ui(self, meal_name, foods):
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        card = QFrame()
+        card.setObjectName("cdCard")
+        card.setStyleSheet("""
+            QFrame#cdCard {
+                background: #f7f9f5;
+                border-radius: 14px;
+                border: 1.5px solid #c8d4c4;
+            }
+        """)
+        outer.addWidget(card)
+
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+
+        #Header: ชื่อ meal
+        hdr = QLabel(meal_name.upper())
+        hdr.setAlignment(Qt.AlignCenter)
+        hdr.setFont(QFont("Segoe UI", 9, QFont.Bold))
+        hdr.setStyleSheet("""
+            color: #5a7a5c;
+            background: #e4edd e;
+            padding: 10px 16px 8px 16px;
+            border-top-left-radius: 14px;
+            border-top-right-radius: 14px;
+            letter-spacing: 1px;
+            background: #dde8da;
+        """)
+        lay.addWidget(hdr)
 
 
+        self._add_divider(lay)
+
+        if not foods:
+            empty = QLabel("No food items available.")
+            empty.setAlignment(Qt.AlignCenter)
+            empty.setFont(QFont("Segoe UI", 10))
+            empty.setStyleSheet("color:#aab8ab; padding: 16px; background:transparent;")
+            lay.addWidget(empty)
+        else:
+            for i, food in enumerate(foods):
+                row = self._make_food_row(food, i, len(foods))
+                lay.addWidget(row)
+                if i < len(foods) - 1:
+                    self._add_divider(lay)
+
+        #ปิด หน้าpop up
+        self._add_divider(lay)
+        close_btn = QPushButton("close")
+        close_btn.setFixedHeight(40)
+        close_btn.setCursor(Qt.PointingHandCursor)
+        close_btn.setFont(QFont("Segoe UI", 10))
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                border: none;
+                border-bottom-left-radius: 14px;
+                border-bottom-right-radius: 14px;
+                color: #3d5240;
+                font-weight: bold;
+            }
+            QPushButton:hover { background: #e4edde; }
+        """)
+        close_btn.clicked.connect(self.accept)
+        lay.addWidget(close_btn)
+
+    def _add_divider(self, layout):
+        line = QFrame()
+        line.setFrameShape(QFrame.HLine)
+        line.setFixedHeight(1)
+        line.setStyleSheet("background: #d4e0d0; border: none;")
+        layout.addWidget(line)
+
+    def _make_food_row(self, food, index, total):
+        row = QWidget()
+        row.setStyleSheet("background: transparent;")
+        hl = QHBoxLayout(row)
+        hl.setContentsMargins(14, 0, 8, 0)
+        hl.setSpacing(6)
+
+        # หมายเลข + ชื่อ
+        lbl = QLabel(f"{index+1}.  {food}")
+        lbl.setFont(QFont("Segoe UI", 11))
+        lbl.setStyleSheet("color: #2d3a2e; background: transparent;")
+        lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        hl.addWidget(lbl)
+
+        # ปุ่มลบ
+        del_btn = QPushButton("✕")
+        del_btn.setFixedSize(26, 26)
+        del_btn.setCursor(Qt.PointingHandCursor)
+        del_btn.setToolTip(f"delete {food}")
+        del_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(180,60,50,0.10);
+                border: none;
+                border-radius: 13px;
+                color: #b03030;
+                font-size: 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: rgba(180,60,50,0.30);
+                color: #8b1a1a;
+            }
+        """)
+        del_btn.clicked.connect(lambda _, f=food: self._delete(f))
+        hl.addWidget(del_btn)
+
+        row.setFixedHeight(42)
+        return row
+
+    def _delete(self, food):
+        self.on_delete(food)
+        self.accept()
+
+
+#FoodList
 class FoodList(QListWidget):
     def __init__(self, meal_cell=None):
         super().__init__()
@@ -115,16 +245,17 @@ class FoodList(QListWidget):
         food = text.split(". ", 1)[1] if ". " in text else text
         self.addItem(f"{self.count()+1}. {food}")
         e.accept()
-        # บันทึกลง meal_data
         if self.meal_cell:
             mc = self.meal_cell
             mc.parent_page.meal_data.setdefault(mc.date_key, {}).setdefault(str(mc.row), []).append(food)
             mc.parent_page.update_mood()
 
 
+#MealCell
 class MealCell(QFrame):
     def __init__(self, meal_name, row, col, parent_page, date_key):
         super().__init__()
+        self.meal_name = meal_name
         self.row=row; self.col=col; self.parent_page=parent_page; self.date_key=date_key
         self._col_hovered = False
         self.setObjectName(f"cell_{row}_{col}")
@@ -133,7 +264,7 @@ class MealCell(QFrame):
         self.food_list=FoodList(meal_cell=self); self.food_list.setMaximumHeight(50)
         self.food_list.setStyleSheet("background:transparent;border:none;"); lay.addWidget(self.food_list)
         self.food_list.itemDoubleClicked.connect(self.delete_food)
-        self.food_list.itemClicked.connect(self.show_detail)
+        self.food_list.itemClicked.connect(self.show_cell_popup)   #คลิกดู popup
         self.add_btn=QPushButton("+"); self.add_btn.setFixedSize(26,26); self.add_btn.setCursor(Qt.PointingHandCursor)
         self.add_btn.setStyleSheet("QPushButton{background:rgba(255,255,255,0.60);border:none;border-radius:13px;font-size:16px;color:#3d5240;font-weight:bold;}QPushButton:hover{background:rgba(255,255,255,0.90);}")
         lay.addWidget(self.add_btn,alignment=Qt.AlignCenter); self.add_btn.clicked.connect(self.add_food)
@@ -156,16 +287,21 @@ class MealCell(QFrame):
             p.drawRoundedRect(r, 10, 10)
             p.end()
 
+    def _get_foods(self):
+        return list(self.parent_page.meal_data.get(self.date_key, {}).get(str(self.row), []))
+
     def _load_existing(self):
-        for food in self.parent_page.meal_data.get(self.date_key,{}).get(str(self.row),[]):
+        for food in self._get_foods():
             self.food_list.addItem(f"{self.food_list.count()+1}. {food}")
+
     def add_food(self):
         text,ok=QInputDialog.getText(self,"Add Food","Food name:")
         if ok and text.strip():
             self.food_list.addItem(f"{self.food_list.count()+1}. {text.strip()}")
             self.parent_page.meal_data.setdefault(self.date_key,{}).setdefault(str(self.row),[]).append(text.strip())
             self.parent_page.update_mood()
-    def delete_food(self,item):
+
+    def delete_food(self, item):
         name=item.text().split(". ",1)[1]
         foods=self.parent_page.meal_data.get(self.date_key,{}).get(str(self.row),[])
         if name in foods: foods.remove(name)
@@ -174,9 +310,42 @@ class MealCell(QFrame):
             old=self.food_list.item(i).text(); n=old.split(". ",1)[1] if ". " in old else old
             self.food_list.item(i).setText(f"{i+1}. {n}")
         self.parent_page.update_mood()
-    def show_detail(self,item):
-        DetailPopup(item.text().split(". ",1)[1]).exec()
 
+    def _delete_by_name(self, food_name):
+        """Delete from the data and the list widget by name."""
+        foods = self.parent_page.meal_data.get(self.date_key, {}).get(str(self.row), [])
+        if food_name in foods:
+            foods.remove(food_name)
+        # ลบออกจาก QListWidget
+        for i in range(self.food_list.count()):
+            txt = self.food_list.item(i).text()
+            name = txt.split(". ", 1)[1] if ". " in txt else txt
+            if name == food_name:
+                self.food_list.takeItem(i)
+                break
+        # renumber
+        for i in range(self.food_list.count()):
+            old = self.food_list.item(i).text()
+            n = old.split(". ", 1)[1] if ". " in old else old
+            self.food_list.item(i).setText(f"{i+1}. {n}")
+        self.parent_page.update_mood()
+
+    def show_cell_popup(self, item):
+        """Click an item to open a popup showing all food items in this section."""
+        foods = self._get_foods()
+        popup = CellDetailPopup(
+            meal_name=self.meal_name,
+            foods=foods,
+            on_delete=self._delete_by_name,
+        )
+        # แสดง popup ใต้ item ที่คลิก
+        rect = self.food_list.visualItemRect(item)
+        gpos = self.food_list.mapToGlobal(rect.bottomLeft())
+        popup.move(gpos.x(), gpos.y() + 4)
+        popup.exec()
+
+
+#ClickableHeader
 class ClickableHeader(QHeaderView):
     col_hovered = Signal(int)
 
@@ -194,8 +363,7 @@ class ClickableHeader(QHeaderView):
             self.update()
             self.col_hovered.emit(col if col > 0 else -1)
         cur = Qt.PointingHandCursor if col > 0 else Qt.ArrowCursor
-        self.setCursor(cur)
-        self.viewport().setCursor(cur)
+        self.setCursor(cur); self.viewport().setCursor(cur)
         super().mouseMoveEvent(e)
 
     def leaveEvent(self, e):
@@ -203,8 +371,7 @@ class ClickableHeader(QHeaderView):
             self._hovered_col = -1
             self.update()
             self.col_hovered.emit(-1)
-        self.setCursor(Qt.ArrowCursor)
-        self.viewport().setCursor(Qt.ArrowCursor)
+        self.setCursor(Qt.ArrowCursor); self.viewport().setCursor(Qt.ArrowCursor)
         super().leaveEvent(e)
 
     def paintSection(self, painter, rect, logical_index):
@@ -213,27 +380,27 @@ class ClickableHeader(QHeaderView):
             from PySide6.QtGui import QColor, QPen
             painter.save()
             painter.fillRect(rect, QColor(61, 82, 64, 55))
-            pen = QPen(QColor(61, 82, 64, 200))
-            pen.setWidth(2)
+            pen = QPen(QColor(61, 82, 64, 200)); pen.setWidth(2)
             painter.setPen(pen)
             painter.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
             painter.restore()
 
-#  Meal Label Cell (column 0) — แสดง icon + meal name
+
+#MealLabelCell
 class MealLabelCell(QWidget):
     def __init__(self, icon, name):
         super().__init__()
         lay = QVBoxLayout(self)
         lay.setContentsMargins(8, 0, 4, 0)
         lay.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-
         lbl = QLabel(f"{icon}  {name.upper()}")
         lbl.setFont(QFont("Segoe UI", 8, QFont.Bold))
         lbl.setStyleSheet("color: #5a6e5b; background: transparent; letter-spacing: 0.4px;")
         lbl.setWordWrap(False)
         lay.addWidget(lbl)
 
-#  Main Page
+
+#MealPlannerPage
 class MealPlannerPage(QWidget):
     go_to_mood  = Signal()
     go_to_daily = Signal(QDate)
@@ -244,7 +411,6 @@ class MealPlannerPage(QWidget):
         self.meal_types = ["Breakfast","Lunch","Dinner","Night","Snack","Note"]
         self.meal_icons = {"Breakfast":"☀","Lunch":"≡","Dinner":"⊟","Night":"☽","Snack":"◎","Note":"☐"}
         self.meal_data = {}
-        # Lock appearance to match standalone style regardless of parent theme
         self.setStyleSheet("""
             MealPlannerPage { background: #f0f2ec; }
             QTableWidget {
@@ -277,7 +443,6 @@ class MealPlannerPage(QWidget):
         main_layout.setContentsMargins(28,20,28,16)
         main_layout.setSpacing(10)
 
-        #Header
         hdr=QHBoxLayout(); tc=QVBoxLayout(); tc.setSpacing(2)
         t=QLabel("Weekly Meals Overview"); t.setFont(QFont("Segoe UI",17,QFont.Bold))
         t.setStyleSheet("color:#1a2b1b;background:transparent;")
@@ -295,32 +460,26 @@ class MealPlannerPage(QWidget):
         hdr.addWidget(self.mood_label)
         main_layout.addLayout(hdr)
 
-        #Week Nav 
         wl=QHBoxLayout()
         nav_s="QPushButton{background:white;border:1px solid #d0d5cc;border-radius:8px;font-size:11px;color:#4a5e4b;}QPushButton:hover{background:#eef2ec;}"
         self.prev_btn=QPushButton("❮"); self.prev_btn.setFixedSize(30,30)
         self.prev_btn.setCursor(Qt.PointingHandCursor); self.prev_btn.setStyleSheet(nav_s)
         self.prev_btn.clicked.connect(self.prev_week)
-
         self.week_btn=QPushButton(); self.week_btn.setFont(QFont("Segoe UI",11))
         self.week_btn.setCursor(Qt.PointingHandCursor); self.week_btn.setMinimumWidth(200); self.week_btn.setFixedHeight(30)
         self.week_btn.setStyleSheet("QPushButton{color:#2d3a2e;padding:4px 14px;background:white;border:1px solid #d0d5cc;border-radius:8px;}QPushButton:hover{background:#f0f5ee;border-color:#a8bb96;}")
         self.week_btn.setToolTip("📅 Click to jump to a specific date")
         self.week_btn.clicked.connect(self.open_calendar)
-
         self.next_btn=QPushButton("❯"); self.next_btn.setFixedSize(30,30)
         self.next_btn.setCursor(Qt.PointingHandCursor); self.next_btn.setStyleSheet(nav_s)
         self.next_btn.clicked.connect(self.next_week)
-
         wl.addStretch(); wl.addWidget(self.prev_btn); wl.addWidget(self.week_btn)
         wl.addWidget(self.next_btn); wl.addStretch()
         main_layout.addLayout(wl)
 
-        # ── Table ──
-        # column 0 = meal label, columns 1-7 = days
         self.table = QTableWidget()
         self.table.setRowCount(len(self.meal_types))
-        self.table.setColumnCount(8)   # col0=PERIOD label + 7 days
+        self.table.setColumnCount(8)
         self.table.setShowGrid(False)
         self.table.setFocusPolicy(Qt.NoFocus)
         self.table.setSelectionMode(QTableWidget.NoSelection)
@@ -335,22 +494,18 @@ class MealPlannerPage(QWidget):
         clickable_hdr.col_hovered.connect(self._on_col_hovered)
         self.table.setHorizontalHeader(clickable_hdr)
         self.table.setColumnWidth(0, 110)
- 
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setSectionResizeMode(QHeaderView.Stretch)
- 
         main_layout.addWidget(self.table, stretch=1)
         self.update_week()
 
     def _on_header_clicked(self, col_index):
-        if col_index == 0:
-            return
+        if col_index == 0: return
         dks = self.get_week_date_keys()
         date_str = dks[col_index - 1]
         dt = datetime.strptime(date_str, "%Y-%m-%d")
         self.go_to_daily.emit(QDate(dt.year, dt.month, dt.day))
 
-    # Calendar
     def open_calendar(self):
         cal=CalendarDialog(self.current_date,self)
         cal.date_selected.connect(self._on_date_picked)
@@ -360,7 +515,6 @@ class MealPlannerPage(QWidget):
     def _on_date_picked(self,dt):
         self.current_date=dt; self.update_week()
 
-    #Week 
     def get_start_of_week(self,date):
         return date - timedelta(days=(date.weekday()+1)%7)
 
@@ -370,7 +524,6 @@ class MealPlannerPage(QWidget):
 
     def update_week(self):
         start=self.get_start_of_week(self.current_date)
-
         headers=["PERIOD"] + [(start+timedelta(days=i)).strftime("%a\n%d %b") for i in range(7)]
         self.table.setHorizontalHeaderLabels(headers)
         end=start+timedelta(days=6)
