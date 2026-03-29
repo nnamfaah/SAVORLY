@@ -3,11 +3,9 @@ from PySide6.QtWidgets import (
     QScrollArea, QPushButton, QFrame,
 )
 from PySide6.QtCore import Qt, QDate, Signal
-from PySide6.QtGui import QFont
 import stylesheet as ss
 
 # ── Mood data ─────────────────────────────────────────────────────────────
-# (week_start, mood_label, emoji, energy_text, advice)
 MOOD_DATA = [
     (
         QDate(2026, 3, 22),
@@ -21,18 +19,11 @@ MOOD_DATA = [
         "steady and focused!",
         "Keep up the balanced routine — your body loves consistency.",
     ),
-    (
-        QDate(2026, 3, 8),
-        "Slightly Tired", "😴",
-        "a bit low on energy.",
-        "Consider adding more protein-rich foods and shorter workout bursts.",
-    ),
 ]
 
 def _week_label(start: QDate) -> str:
     end = start.addDays(6)
     return f"{start.toString('MMM d')} - {end.toString('MMM d, yyyy')}"
-
 
 def _label(text: str, style: str) -> QLabel:
     lbl = QLabel(text)
@@ -40,184 +31,143 @@ def _label(text: str, style: str) -> QLabel:
     return lbl
 
 class WeeklyMoodSubPage(QWidget):
-    """Weekly Mood & Activity Insight sub-page."""
     go_to_weekly_meal = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setStyleSheet(ss.page_bg)
-
-        self._idx   = 0
+        self._idx = 0
         self._total = len(MOOD_DATA)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet(ss.scroll_transparent)
 
-        inner = QWidget()
-        inner.setStyleSheet(ss.page_bg)
-        v = QVBoxLayout(inner)
-        v.setContentsMargins(36, 28, 36, 36)
-        v.setSpacing(16)
+        self._inner = QWidget()
+        self._inner.setStyleSheet(ss.inner_transparent)
+        self._v = QVBoxLayout(self._inner)
+        self._v.setContentsMargins(40, 30, 40, 40)
+        self._v.setSpacing(25)
 
-        # Header
-        col = QVBoxLayout()
-        col.addWidget(_label("Weekly Mood & Activity Insight",
-                             "font-size:22px; font-weight:700; color:#1a1a1a;"))
-        col.addWidget(_label("A deep dive into your emotional well-being for the past 7 days.",
-                             "font-size:13px; color:#888;"))
-        v.addLayout(col)
+        self._build_header()
+        self._build_nav()
+        self._v.addWidget(self._build_mood_card())
+        self._v.addStretch()
 
-        # Week navigator
-        nav = QHBoxLayout()
-        nav.addStretch()
-        self._btn_prev = QPushButton("‹")
-        self._btn_next = QPushButton("›")
-        for b in (self._btn_prev, self._btn_next):
-            b.setFixedSize(32, 32)
-            b.setCursor(Qt.PointingHandCursor)
-            b.setStyleSheet(
-                "QPushButton { background:#f0ece5; border-radius:8px; font-size:18px; }"
-                "QPushButton:hover { background:#ddd8ce; }"
-            )
-        self._btn_prev.clicked.connect(self._go_prev)
-        self._btn_next.clicked.connect(self._go_next)
-
-        self._week_lbl = QLabel()
-        self._week_lbl.setAlignment(Qt.AlignCenter)
-        self._week_lbl.setStyleSheet(
-            "font-size:14px; font-weight:600; color:#333; padding:0 12px;"
-        )
-
-        self._cal_btn = QPushButton("📅")
-        self._cal_btn.setFixedSize(32, 32)
-        self._cal_btn.setCursor(Qt.PointingHandCursor)
-        self._cal_btn.setToolTip("คลิกเพื่อดู Weekly Meals")
-        self._cal_btn.setStyleSheet(
-            "QPushButton { background:#f0ece5; border-radius:8px; font-size:16px; border:none; }"
-            "QPushButton:hover { background:#ddd8ce; }"
-        )
-        self._cal_btn.clicked.connect(self.go_to_weekly_meal.emit)
-
-        nav.addWidget(self._btn_prev)
-        nav.addWidget(self._week_lbl)
-        nav.addWidget(self._cal_btn)
-        nav.addWidget(self._btn_next)
-        v.addLayout(nav)
-
-        # Mood card
-        self._mood_card = self._build_mood_card()
-        v.addWidget(self._mood_card)
-        v.addStretch()
-
-        scroll.setWidget(inner)
+        scroll.setWidget(self._inner)
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.addWidget(scroll)
 
         self._refresh()
 
-    # ── Mood card ─────────────────────────────────────────────────────────
+    def _build_header(self):
+        hdr = QVBoxLayout()
+        hdr.setSpacing(4)
+        hdr.addWidget(_label("Weekly Mood & Activity Insight", ss.page_title))
+        hdr.addWidget(_label("A deep dive into your emotional well-being for the past 7 days.", ss.page_subtitle))
+        self._v.addLayout(hdr)
+
+    def _build_nav(self):
+        row = QHBoxLayout()
+        row.addStretch()
+        
+        nav_frame = QFrame()
+        nav_frame.setStyleSheet(f"background: {ss.white}; border-radius: {ss.radius_md}px; border: none;")
+        nav_lay = QHBoxLayout(nav_frame)
+        
+        self._btn_prev = QPushButton("‹")
+        self._btn_next = QPushButton("›")
+        self._week_lbl = _label("", f"font-size:13px; font-weight:600; color:{ss.text}; padding: 0 10px;")
+
+        cal_btn = QPushButton("📅")
+        cal_btn.setFixedSize(30, 30)
+        cal_btn.setStyleSheet("border: none; font-size: 16px;")
+        cal_btn.clicked.connect(self.go_to_weekly_meal.emit)
+
+        for b in (self._btn_prev, self._btn_next):
+            b.setFixedSize(30, 30)
+            b.setStyleSheet(f"QPushButton {{ border: none; font-size: 20px; color: {ss.text_muted}; }}")
+
+        self._btn_prev.clicked.connect(self._go_prev)
+        self._btn_next.clicked.connect(self._go_next)
+
+        nav_lay.addWidget(self._btn_prev)
+        nav_lay.addWidget(cal_btn)
+        nav_lay.addWidget(self._week_lbl)
+        nav_lay.addWidget(self._btn_next)
+        row.addWidget(nav_frame)
+        self._v.addLayout(row)
+
     def _build_mood_card(self) -> QFrame:
         outer = QFrame()
-        outer.setStyleSheet("QFrame { background:#c5d6b2; border-radius:20px; }")
-        outer.setMinimumHeight(260)
+        outer.setFixedHeight(380)
+        outer.setStyleSheet(f"background: {ss.white}; border-radius: 30px;")
+        
+        layout = QHBoxLayout(outer)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        h = QHBoxLayout(outer)
-        h.setContentsMargins(0, 0, 0, 0)
-        h.setSpacing(0)
-
-        # Left green panel
-        left = QFrame()
-        left.setStyleSheet(
-            "QFrame { background:#7fa66e; border-top-left-radius:20px;"
-            "border-bottom-left-radius:20px; }"
+        self._left_panel = QFrame()
+        self._left_panel.setStyleSheet(
+            f"background: {ss.light_green}; border-top-left-radius: 30px; border-bottom-left-radius: 30px;"
         )
-        lv = QVBoxLayout(left)
-        lv.setContentsMargins(32, 32, 32, 32)
-        lv.setSpacing(16)
+        left_v = QVBoxLayout(self._left_panel)
+        self._emoji_lbl = _label("😍", "font-size: 120px; qproperty-alignment: AlignCenter;")
+        left_v.addWidget(self._emoji_lbl)
 
-        self._emoji_lbl = QLabel()
-        self._emoji_lbl.setAlignment(Qt.AlignCenter)
-        f = QFont(); f.setPointSize(52)
-        self._emoji_lbl.setFont(f)
-        self._emoji_lbl.setStyleSheet("background:transparent;")
+        right_panel = QFrame()
+        right_v = QVBoxLayout(right_panel)
+        right_v.setContentsMargins(40, 40, 40, 40)
+        right_v.setSpacing(20)
 
-        self._mood_tag = QLabel()
-        self._mood_tag.setAlignment(Qt.AlignCenter)
-        self._mood_tag.setStyleSheet(
-            "background:rgba(255,255,255,0.35); border-radius:12px;"
-            "padding:6px 18px; font-size:13px; color:#333;"
-        )
-        lv.addStretch()
-        lv.addWidget(self._emoji_lbl)
-        lv.addWidget(self._mood_tag)
-        lv.addStretch()
+        badge = _label("WEEKLY REPORT", 
+                       f"background: {ss.light_green}; color: {ss.dark_green}; "
+                       f"padding: 5px 12px; border-radius: 10px; font-weight: 800; font-size: 11px;")
+        badge.setFixedWidth(120)
 
-        # Right beige panel
-        right = QFrame()
-        right.setStyleSheet(
-            "QFrame { background:#e8e2d9; border-top-right-radius:20px;"
-            "border-bottom-right-radius:20px; }"
-        )
-        rv = QVBoxLayout(right)
-        rv.setContentsMargins(28, 28, 28, 28)
-        rv.setSpacing(14)
+        self._title_lbl = _label("Mood of Week 1", 
+                                f"font-size: 36px; font-weight: 800; color: {ss.text};")
+        
+        self._content_lbl = QLabel()
+        self._content_lbl.setWordWrap(True)
+        self._content_lbl.setStyleSheet(f"font-size: 18px; color: {ss.text}; line-height: 160%;")
 
-        badge = QLabel("WEEKLY REPORT")
-        badge.setFixedHeight(24)
-        badge.setStyleSheet(
-            "background:#c5d6b2; border-radius:8px; padding:3px 10px;"
-            "font-size:11px; font-weight:700; color:#4a6a38;"
-        )
+        right_v.addWidget(badge)
+        right_v.addWidget(self._title_lbl)
+        right_v.addSpacing(10)
+        right_v.addWidget(self._content_lbl)
+        right_v.addStretch()
 
-        self._week_title_lbl = QLabel()
-        self._week_title_lbl.setWordWrap(True)
-        self._week_title_lbl.setStyleSheet(
-            "font-size:26px; font-weight:800; color:#1a1a1a;"
-        )
-
-        self._energy_lbl = QLabel()
-        self._energy_lbl.setWordWrap(True)
-        self._energy_lbl.setStyleSheet("font-size:14px; color:#333;")
-
-        self._advice_lbl = QLabel()
-        self._advice_lbl.setWordWrap(True)
-        self._advice_lbl.setStyleSheet("font-size:14px; color:#555;")
-
-        rv.addWidget(badge)
-        rv.addWidget(self._week_title_lbl)
-        rv.addWidget(self._energy_lbl)
-        rv.addWidget(self._advice_lbl)
-        rv.addStretch()
-
-        h.addWidget(left,  4)
-        h.addWidget(right, 5)
+        layout.addWidget(self._left_panel, 1)
+        layout.addWidget(right_panel, 1)
         return outer
 
-    # ── Refresh ───────────────────────────────────────────────────────────
     def _refresh(self):
+        if not (0 <= self._idx < self._total): return
         start, mood, emoji, energy, advice = MOOD_DATA[self._idx]
 
         self._week_lbl.setText(_week_label(start))
         self._emoji_lbl.setText(emoji)
-        self._mood_tag.setText(mood)
-        self._week_title_lbl.setText(f"Mood of Week {self._total - self._idx}")
-        self._energy_lbl.setText(
-            f"This week you've been <b style='color:#4a8a28'>{energy}</b>"
+        self._title_lbl.setText(f"Mood of Week {self._total - self._idx}")
+
+        bullet_text = (
+            f"<ul style='margin-left: -20px; list-style-type: disc;'>"
+            f"<li>This week you've been <b style='color:{ss.tdee}'>{energy}</b></li>"
+            f"<br>"
+            f"<li>{advice}</li>"
+            f"</ul>"
         )
-        self._energy_lbl.setTextFormat(Qt.RichText)
-        self._advice_lbl.setText(advice)
+        self._content_lbl.setText(bullet_text)
+        self._content_lbl.setTextFormat(Qt.RichText)
 
         self._btn_prev.setEnabled(self._idx < self._total - 1)
         self._btn_next.setEnabled(self._idx > 0)
 
     def _go_prev(self):
-        if self._idx < self._total - 1:
-            self._idx += 1
-            self._refresh()
+        self._idx += 1
+        self._refresh()
 
     def _go_next(self):
-        if self._idx > 0:
-            self._idx -= 1
-            self._refresh()
+        self._idx -= 1
+        self._refresh()
