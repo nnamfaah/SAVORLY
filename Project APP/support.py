@@ -1,28 +1,23 @@
-from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QLabel,
-                                QHBoxLayout, QFrame)
+from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QLabel,QHBoxLayout, QFrame)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 import sys
-
 
 class SupportPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("contentArea")
         self.setStyleSheet("QWidget#contentArea { background: #f0f2ec; }")
-
         outer = QVBoxLayout(self)
         outer.setContentsMargins(40, 40, 40, 40)
         outer.setSpacing(0)
 
-        # ── Title ────────────────────────────────────────────────
         title = QLabel("Support Section")
         title.setFont(QFont("Segoe UI", 17, QFont.Bold))
         title.setStyleSheet("color: #1a2b1b; background: transparent;")
         outer.addWidget(title)
         outer.addSpacing(20)
 
-        # ── Card ─────────────────────────────────────────────────
         card = QFrame()
         card.setStyleSheet("""
             QFrame {
@@ -33,7 +28,6 @@ class SupportPage(QWidget):
         """)
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(28, 22, 28, 22)
-        card_layout.setSpacing(0)
 
         # Card title
         card_title = QLabel("Contact Support")
