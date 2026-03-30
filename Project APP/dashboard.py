@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QPushButton, QLineEdit, QFrame, QScrollArea,
     QSizePolicy, QGraphicsDropShadowEffect,
 )
-from PySide6.QtCore import Qt, QTimer, QRectF, Signal, QPropertyAnimation, QEasingCurve, QRect, Property
+from PySide6.QtCore import Qt, QTimer, QRectF, Signal, QPropertyAnimation, QEasingCurve, QRect, Property, QObject
 from PySide6.QtGui import QFont, QPainter, QPen, QColor, QPixmap, QIcon
 
 import stylesheet as ss
@@ -209,6 +209,23 @@ def _macro_tile(label, color):
     anim.setEasingCurve(QEasingCurve.OutCubic)
 
     return w, value_lbl, bar_fill, anim
+
+class AnimatedValue(QObject):
+    def __init__(self, value=0):
+        super().__init__()
+        self._value = value
+
+    def getValue(self):
+        return self._value
+
+    def setValue(self, val):
+        self._value = val
+        self.on_change(val)
+
+    value = Property(float, getValue, setValue)
+
+    def on_change(self, val):
+        pass
 
 # Meal Timeline
 class _MealTimeline(QWidget):
@@ -440,6 +457,8 @@ class DashboardPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent); self.setStyleSheet(ss.page_bg)
         self.load_user_data()
+        self._tdee_target = 2000
+        self._current_calories = 0
 
         scroll = QScrollArea(); scroll.setWidgetResizable(True)
         scroll.setStyleSheet(ss.scroll_transparent)
@@ -455,16 +474,7 @@ class DashboardPage(QWidget):
         s = QLabel("Track your nutrients and stay healthy."); s.setStyleSheet(ss.page_subtitle )
         head_col.addWidget(self.user_label); head_col.addWidget(s)
         hdr.addLayout(head_col); hdr.addStretch()
-        bell = QLabel("🔔"); bell.setFixedSize(40,40); bell.setAlignment(Qt.AlignCenter)
-        bell.setStyleSheet(ss.bell_icon)
         # Avatar circle with photo placeholder
-        av_wrap = QWidget(); av_wrap.setFixedSize(44,44)
-        av_wrap.setStyleSheet(f"background:{ss.light_green}; border-radius:22px;")
-        av_inner = QVBoxLayout(av_wrap); av_inner.setContentsMargins(0,0,0,0)
-        av_lbl = QLabel("👤"); av_lbl.setAlignment(Qt.AlignCenter)
-        av_lbl.setStyleSheet("font-size:20px; background:transparent;")
-        av_inner.addWidget(av_lbl)
-        hdr.addWidget(bell); hdr.addSpacing(8); hdr.addWidget(av_wrap)
         v.addLayout(hdr)
 
         # Today's Balance (Donut + macros)
@@ -478,6 +488,8 @@ class DashboardPage(QWidget):
         self.donut = _Donut()
 
         donut_layout.addWidget(self.donut, alignment=Qt.AlignCenter)
+        self.anim_value = AnimatedValue(1.0)
+        self.anim_value.on_change = self._apply_progress
 
         macro_row.addLayout(donut_layout)
 
@@ -529,6 +541,8 @@ class DashboardPage(QWidget):
         scroll.setWidget(inner)
         root = QVBoxLayout(self); root.setContentsMargins(0,0,0,0); root.addWidget(scroll)
 
+        
+        self._update_donut()
         self.update_user()
     
     def update_user(self):
@@ -574,7 +588,6 @@ class DashboardPage(QWidget):
         }
 
         for item in foods:
-            # If item is a string, get its profile from FOOD_DATABASE
             if isinstance(item, str):
                 profile = FOOD_DATABASE.get(item, {})
                 qty = 1
@@ -583,7 +596,7 @@ class DashboardPage(QWidget):
                 profile = item.get("profile") or item.get("macros") or {}
                 qty = item.get("quantity", 1)
             else:
-                continue  # skip unknown types
+                continue 
 
             if not profile:
                 continue
@@ -616,9 +629,26 @@ class DashboardPage(QWidget):
                 lambda k=key, p=percent: self._animate_bar(k, p)
             )
 
+        calories = (
+            total["protein"] * 4 +
+            total["carbs"] * 4 +
+            total["fat"] * 9
+        )
+        tdee = getattr(self, "_tdee_target", 2000)
+        remaining = max(tdee - calories, 0)
+        percent = remaining / self._tdee_target if self._tdee_target > 0 else 0
+        percent = max(0.0, min(percent, 1.0))
+        self.donut.set_value(percent)
+
     def update_tdee(self, tdee):
-        max_tdee = 5000
-        percent = tdee / max_tdee
+        self._tdee_target = tdee
+        self._current_calories = 0  # reset or track separately
+        self._update_donut()
+
+    def _update_donut(self):
+        remaining = max(self._tdee_target - self._current_calories, 0)
+        percent = remaining / self._tdee_target if self._tdee_target > 0 else 0
+
         self.donut.set_value(percent)
 
     def _animate_bar(self, key, percent):
@@ -643,3 +673,22 @@ class DashboardPage(QWidget):
         anim.setStartValue(bar.maximumWidth())
         anim.setEndValue(new_width)
         anim.start()
+
+    def animate_to(self, target):
+        self.anim = QPropertyAnimation(self.anim_value, b"value")
+        self.anim.setDuration(500)  # smooth
+        self.anim.setStartValue(self.anim_value.getValue())
+        self.anim.setEndValue(target)
+        self.anim.start()
+
+    def _apply_progress(self, percent):
+        self.donut.setStyleSheet(f"""
+            background: qradialgradient(
+                cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,
+                stop:0.6 #B7C9A8,
+                stop:0.601 rgba(255,255,255,0.3),
+                stop:{0.6 + (0.4 * percent)} white,
+                stop:{0.601 + (0.4 * percent)} rgba(255,255,255,0.3)
+            );
+            border-radius: 70px;
+        """)

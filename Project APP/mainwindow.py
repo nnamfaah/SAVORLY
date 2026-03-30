@@ -2,7 +2,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QPushButton, QLabel, QSizePolicy, QStackedWidget
 )
-from PySide6.QtCore import Qt, QSize, QDate
+from PySide6.QtCore import Qt, QSize, QDate,  QObject, Property, QPropertyAnimation
 from PySide6.QtGui import QIcon, QPixmap
 
 import stylesheet as ss
@@ -169,16 +169,22 @@ class MainWindow(QMainWindow):
         )
         # Weekly → Daily
         self.meal_planner.go_to_daily.connect(self.open_daily_page)
+
+        # Emoji → Weekly Detail Page
+        self.meal_planner.go_to_mood.connect(
+            lambda: self._stack.setCurrentWidget(self.weekly_page)
+        )
         
         self.meal_planner.meal_data = self.meal_data
         self.daily_page.meal_data = self.meal_data
         self.weekly_page._weekly_meal.meal_data = self.meal_data
+        today = QDate.currentDate().toString("yyyy-MM-dd")
+        self.daily_page.sync_from_main(today, self.meal_data)
 
         self.dashboard_page.meal_added.connect(self.handle_meal_data_change)
 
+        self.meal_planner.date_picked.connect(self.open_daily_page)
         self.meal_planner.meal_data_changed.connect(self.handle_meal_data_change)
-        self.meal_planner.jump_to_week_day.connect(self.handle_jump_to_week)
-        self.meal_planner.jump_to_week_day.connect(self.show_weekly_page)
         saved_data = load_meal_data(Session.user_id)
         if saved_data:
             self.meal_data = saved_data or {}
@@ -191,6 +197,7 @@ class MainWindow(QMainWindow):
         self.settings_page.calculate_requested.connect(self.handle_calculation)
         self.result_page.data_confirmed.connect(self.save_results)
         self.result_page.cancelled.connect(lambda: self._stack.setCurrentWidget(self.settings_page))
+        self.settings_page.tdee_updated.connect(self.dashboard_page.update_tdee)
         self._stack.addWidget(self.settings_page)
         self._stack.addWidget(self.result_page)
 
@@ -292,19 +299,46 @@ class MainWindow(QMainWindow):
 
         # 3. Flatten for dashboard
         meal_profiles = []
-        for foods in self.meal_data.values():
-            for food in foods:
-                if isinstance(food, str):
-                    profile = FOOD_DATABASE.get(food, {})
-                    meal_profiles.append({
-                        "profile": profile,
-                        "quantity": 1
-                    })
-                else:
-                    meal_profiles.append(food)
+
+        for meals in self.meal_data.values():
+            for food_list in meals.values():
+                for food in food_list:
+
+                    if isinstance(food, dict):
+                        meal_profiles.append(food)
+
+                    elif isinstance(food, str):
+                        profile = FOOD_DATABASE.get(food, {})
+                        meal_profiles.append({
+                            "profile": profile,
+                            "quantity": 1
+                        })
+
+        total_calories = 0
+
+        for item in meal_profiles:
+            profile = item.get("profile", {})
+            qty = item.get("quantity", 1)
+
+            calories = (
+                profile.get("protein", 0) * 4 +
+                profile.get("carbs", 0) * 4 +
+                profile.get("fat", 0) * 9
+            ) * qty
+
+            total_calories += calories
+
+        tdee = getattr(self.dashboard_page, "tdee", 5000)
+
+        self.dashboard_page.update_calorie_visual(total_calories, tdee)
+        self.daily_page.update_calorie_visual(total_calories, tdee)
 
         # 4. Update dashboard
         self.dashboard_page.update_from_meals(meal_profiles)
+        self.dashboard_page.update_calorie_visual(
+            eaten=total_calories,
+            tdee=getattr(self.dashboard_page, "tdee", 5000)
+        )
 
         # 5. Save database
         save_meal_data(Session.user_id, date, meals_for_day)
@@ -323,19 +357,12 @@ class MainWindow(QMainWindow):
         if hasattr(self.daily_page, "_refresh"):
             self.daily_page._refresh()
 
-    def open_daily_page(self, date_str):
-        self._stack.setCurrentWidget(self.daily_page)
-
-        self.daily_page.set_date(date_str)
-        self.daily_page.meal_data = self.meal_data
-        self.daily_page._refresh()
-
 
     def open_weekly_detail(self, date_str):
         self._stack.setCurrentWidget(self.weekly_page)
         self.weekly_page.load_day(
             date_str,
-            self.meal_data.get(date_str, [])
+            self.meal_data.get(date_str, {})
         )
 
     def set_date(self, date_str):
@@ -353,5 +380,23 @@ class MainWindow(QMainWindow):
 
         date_str = self.daily_page.get_current_date().toString("yyyy-MM-dd")
         self.meal_planner.select_day(date_str)
+
+    def update_calorie_visual(self, eaten, tdee):
+        remaining = max(tdee - eaten, 0)
+        percent = remaining / tdee if tdee else 0
+
+        self.update_progress(percent)
+
+    def update_progress(self, percent):
+        self.donut.setStyleSheet(f"""
+            background: qradialgradient(
+                cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,
+                stop:0.6 #B7C9A8,
+                stop:0.601 rgba(255,255,255,0.3),
+                stop:{0.6 + (0.4 * percent)} white,
+                stop:{0.601 + (0.4 * percent)} rgba(255,255,255,0.3)
+            );
+            border-radius: 70px;
+        """)
 
     
