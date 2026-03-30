@@ -369,10 +369,8 @@ class DashboardPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent); self.setStyleSheet(ss.page_bg)
         self.load_user_data()
-
         scroll = QScrollArea(); scroll.setWidgetResizable(True)
         scroll.setStyleSheet(ss.scroll_transparent)
-
         inner = QWidget(); inner.setStyleSheet(ss.page_bg)
         v = QVBoxLayout(inner); v.setContentsMargins(36,28,36,36); v.setSpacing(20)
 
@@ -384,17 +382,6 @@ class DashboardPage(QWidget):
         s = QLabel("Track your nutrients and stay healthy."); s.setStyleSheet(ss.page_subtitle )
         head_col.addWidget(self.user_label); head_col.addWidget(s)
         hdr.addLayout(head_col); hdr.addStretch()
-        bell = QLabel("🔔"); bell.setFixedSize(40,40); bell.setAlignment(Qt.AlignCenter)
-        bell.setStyleSheet(ss.bell_icon)
-        # Avatar circle with photo placeholder
-        av_wrap = QWidget(); av_wrap.setFixedSize(44,44)
-        av_wrap.setStyleSheet(f"background:{ss.light_green}; border-radius:22px;")
-        av_inner = QVBoxLayout(av_wrap); av_inner.setContentsMargins(0,0,0,0)
-        av_lbl = QLabel("👤"); av_lbl.setAlignment(Qt.AlignCenter)
-        av_lbl.setStyleSheet("font-size:20px; background:transparent;")
-        av_inner.addWidget(av_lbl)
-        hdr.addWidget(bell); hdr.addSpacing(8); hdr.addWidget(av_wrap)
-        v.addLayout(hdr)
 
         # Today's Balance (Donut + macros)
         # Donut
@@ -477,10 +464,6 @@ class DashboardPage(QWidget):
         print("BMI:", bmi)
         print("TDEE:", tdee)
 
-    # If you have labels:
-    # self.bmi_label.setText(str(bmi))
-    # self.tdee_label.setText(str(tdee))
-
     def update_dashboard_macros(self, foods):
         total = {
             "protein": 0,
@@ -528,8 +511,6 @@ class DashboardPage(QWidget):
         bar = self.macro_bars[key]
         anim = self.macro_anims[key]
         container = bar.parent()
-
-    # Ensure layout is calculated
         container.updateGeometry()
         container.repaint()
 
