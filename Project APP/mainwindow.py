@@ -11,6 +11,7 @@ from weekly import WeeklySummaryPage
 from session import Session
 from Database_sor import user_has_health_data
 from settings_page_input import SettingsPage
+from support import SupportPage
 
 def _logo_label(size: int = 48) -> QLabel:
     lbl = QLabel()
@@ -135,7 +136,8 @@ class MainWindow(QMainWindow):
         self.dashboard_page = DashboardPage()
         self._stack.addWidget(self.dashboard_page)
         self._stack.addWidget(WeeklySummaryPage())
-        self._stack.addWidget(self._placeholder("Support",  "Contact us at hello@savorly.app"))
+        self._support_page = SupportPage()
+        self._stack.addWidget(self._support_page)
         self.settings_page = SettingsPage()
         self._stack.addWidget(self.settings_page)
 
