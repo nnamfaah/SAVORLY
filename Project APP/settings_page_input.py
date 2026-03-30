@@ -56,6 +56,7 @@ class AnimatedComboBox(QComboBox):
 
 class SettingsPage(QWidget):
     calculate_requested = Signal(dict)
+    tdee_updated = Signal(float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -341,7 +342,7 @@ class SettingsPage(QWidget):
                 bmr,
                 tdee
             )
-
+            self.tdee_updated.emit(tdee)
             self.status_label.setText("Saved ✅")
             self.show_saved_animation()
 

@@ -31,6 +31,7 @@ class DailyMealsSubPage(QWidget):
         self.setStyleSheet(ss.page_bg)
         self._current_date = QDate.currentDate()
         self.meal_data = {}
+        
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -54,10 +55,6 @@ class DailyMealsSubPage(QWidget):
 
         self._refresh()
 
-    def set_day_data(self, date_key, meals):
-        self._current_date = QDate.fromString(date_key, "yyyy-MM-dd")
-        self.meal_data[date_key] = meals
-        self._refresh()
 
     def _build_header(self):
         hdr = QVBoxLayout()
@@ -270,24 +267,36 @@ class DailyMealsSubPage(QWidget):
         )
 
         tdee_target = getattr(self, "_tdee_target", 2000) or 2000
-        progress_percent = min((calories / tdee_target) * 100, 100)
 
-        # ✅ DONUT UPDATE
-        self._donut.setStyleSheet(
-            f"""
-            background: qradialgradient(
-                cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,
-                stop:0.6 {ss.light_green},
-                stop:0.601 rgba(255,255,255,0.3),
-                stop:{0.6 + (0.4 * progress_percent/100)} {ss.white},
-                stop:{0.601 + (0.4 * progress_percent/100)} rgba(255,255,255,0.3)
-            );
-            border-radius: 70px;
-            font-size:18px;
-            font-weight:700;
-            color:{ss.text};
-            """
-        )
+        # remaining calories (like dashboard)
+        remaining = max(tdee_target - calories, 0)
+
+        #progress = remaining %
+        progress = remaining / tdee_target if tdee_target > 0 else 0
+
+        # ✅ HARD CLAMP (prevents Qt crash)
+        progress = max(0.0, min(progress, 1.0))
+
+        # gradient stops (SAFE RANGE)
+        start = 0.6
+        end = min(start + (0.4 * progress), 0.999)
+        fade = min(end + 0.001, 1.0)
+
+
+        self._donut.setStyleSheet(f"""
+        background: qradialgradient(
+            cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,
+            stop:0.6 {ss.light_green},
+            stop:0.601 rgba(255,255,255,0.3),
+            stop:{end} {ss.white},
+            stop:{fade} rgba(255,255,255,0.3)
+        );
+        border-radius: 70px;
+        font-size:18px;
+        font-weight:700;
+        color:{ss.text};
+        """)
+
     def update_tdee(self, tdee):
         self._tdee_target = tdee
         self._refresh()
@@ -299,22 +308,33 @@ class DailyMealsSubPage(QWidget):
         self._current_date = self._current_date.addDays(-1)
         self._refresh()
 
+        date_str = self._current_date.toString("yyyy-MM-dd")
+        self.go_to_weekly_meal.emit()
+
     def _go_next(self):
         self._current_date = self._current_date.addDays(1)
         self._refresh()
+
+        date_str = self._current_date.toString("yyyy-MM-dd")
+        self.go_to_weekly_meal.emit()
 
     def get_current_date(self) -> QDate:
         return self._current_date
 
     def set_date(self, qdate):
-        self.current_date = qdate
-        self.refresh_ui()
+        if isinstance(qdate, str):
+            self._current_date = QDate.fromString(qdate, "yyyy-MM-dd")
+        else:
+            self._current_date = qdate
+
+        self._refresh()
 
     def set_meals(self, meals):
         """Set meals for current day"""
         self.meals = meals
         self.refresh_ui()
 
-    def refresh_ui(self):
-        """Alias for compatibility"""
-        self.refresh_ui()
+    def sync_from_main(self, date_str, meal_data):
+        self._current_date = QDate.fromString(date_str, "yyyy-MM-dd")
+        self.meal_data = meal_data
+        self._refresh()

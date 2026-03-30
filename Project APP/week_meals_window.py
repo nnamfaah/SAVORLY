@@ -77,19 +77,19 @@ class CalendarDialog(QDialog):
     def _pick(self,d):
         self.selected_date=datetime(d.year,d.month,d.day)
         self.date_selected.emit(self.selected_date); self.accept()
+
     def _prev_month(self):
         y,m=self.view_date.year,self.view_date.month
         self.view_date=self.view_date.replace(year=y-1 if m==1 else y,month=12 if m==1 else m-1,day=1); self._render_calendar()
+
     def _next_month(self):
         y,m=self.view_date.year,self.view_date.month
         self.view_date=self.view_date.replace(year=y+1 if m==12 else y,month=1 if m==12 else m+1,day=1); self._render_calendar()
+
     def _go_today(self):
         today=datetime.today(); self.view_date=today.replace(day=1); self.selected_date=today
         self._render_calendar(); self.date_selected.emit(today); self.accept()
 
-
-#Cell Detail Popup
-# แสดงรายการอาหารทั้งหมดในช่อง กดแต่ละรายการเพื่อลบ
 class CellDetailPopup(QDialog):
     """A popup displays all food items in the list, with a delete button for each item."""
 
@@ -120,8 +120,6 @@ class CellDetailPopup(QDialog):
         lay = QVBoxLayout(card)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
-
-        #Header: ชื่อ meal
         hdr = QLabel(meal_name.upper())
         hdr.setAlignment(Qt.AlignCenter)
         hdr.setFont(QFont("Segoe UI", 9, QFont.Bold))
@@ -135,8 +133,6 @@ class CellDetailPopup(QDialog):
             background: #dde8da;
         """)
         lay.addWidget(hdr)
-
-
         self._add_divider(lay)
 
         if not foods:
@@ -152,7 +148,6 @@ class CellDetailPopup(QDialog):
                 if i < len(foods) - 1:
                     self._add_divider(lay)
 
-        #ปิด หน้าpop up
         self._add_divider(lay)
         close_btn = QPushButton("close")
         close_btn.setFixedHeight(40)
@@ -186,14 +181,12 @@ class CellDetailPopup(QDialog):
         hl.setContentsMargins(14, 0, 8, 0)
         hl.setSpacing(6)
 
-        # หมายเลข + ชื่อ
         lbl = QLabel(f"{index+1}.  {food}")
         lbl.setFont(QFont("Segoe UI", 11))
         lbl.setStyleSheet("color: #2d3a2e; background: transparent;")
         lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         hl.addWidget(lbl)
 
-        # ปุ่มลบ
         del_btn = QPushButton("✕")
         del_btn.setFixedSize(26, 26)
         del_btn.setCursor(Qt.PointingHandCursor)
@@ -414,7 +407,7 @@ class MealCell(QFrame):
             foods=foods,
             on_delete=self._delete_by_name,
         )
-        # แสดง popup ใต้ item ที่คลิก
+
         rect = self.food_list.visualItemRect(item)
         gpos = self.food_list.mapToGlobal(rect.bottomLeft())
         popup.move(gpos.x(), gpos.y() + 4)
@@ -459,10 +452,6 @@ class ClickableHeader(QHeaderView):
             painter.setPen(pen)
             painter.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
             painter.restore()
-
-    def show_detail(self, item):
-        DetailPopup(item.text().split(". ",1)[1]).exec()
-
 
 #MealLabelCell
 class MealLabelCell(QWidget):
@@ -601,7 +590,6 @@ class MealPlannerPage(QWidget):
 
         date_str = dt.strftime("%Y-%m-%d")
 
-        self.select_day(date_str)
         self.date_picked.emit(date_str)
 
     def get_start_of_week(self,date):
@@ -613,6 +601,8 @@ class MealPlannerPage(QWidget):
     
     def _handle_mood_click(self):
         date_str = self.current_date.strftime("%Y-%m-%d")
+
+        self.go_to_mood.emit()   
         self.jump_to_week_day.emit(date_str)
 
     def update_week(self):
@@ -664,6 +654,32 @@ class MealPlannerPage(QWidget):
     def update_mood(self):
         emoji = {"excellent":"😍","normal":"😊","low":"☺️","stress":"😃"}.get(self.calculate_mood(),"😊")
         self.mood_label.setText(emoji)
+
+    def select_day(self, date_str: str):
+        from datetime import datetime
+
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        self.current_date = dt
+        self.update_week()
+
+        meals_for_day = self.meal_data.get(date_str, {})
+        self.meal_data_changed.emit(date_str, meals_for_day)
+
+    def select_day(self, date_str: str):
+        """
+        Highlight / jump to a specific date in the weekly view
+        and sync current_date properly.
+        """
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+
+        self.current_date = dt
+
+        self.update_week()
+        week_keys = self.get_week_date_keys()
+
+        if date_str in week_keys:
+            col_index = week_keys.index(date_str) + 1  
+            self._on_col_hovered(col_index)
 
 
 if __name__=="__main__":
