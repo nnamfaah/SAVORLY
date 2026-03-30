@@ -1,16 +1,20 @@
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-    QPushButton, QLabel, QSizePolicy, QStackedWidget,
+    QPushButton, QLabel, QSizePolicy, QStackedWidget
 )
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSize, QDate
 from PySide6.QtGui import QIcon, QPixmap
 
 import stylesheet as ss
 from dashboard import DashboardPage
 from weekly import WeeklySummaryPage
 from session import Session
-from Database_sor import user_has_health_data
+from Database_sor import user_has_health_data, save_meal_data, load_meal_data
 from settings_page_input import SettingsPage
+from result_page import ResultPage
+from week_meals_window import MealPlannerPage
+from food_database import FOOD_DATABASE
+from daily_meals import DailyMealsSubPage
 from support import SupportPage
 
 def _logo_label(size: int = 48) -> QLabel:
@@ -111,12 +115,15 @@ class Sidebar(QWidget):
 
 
 class MainWindow(QMainWindow):
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Savorly Meal Balancing App")
         self.resize(1200, 780)
         self.setMinimumSize(960, 640)
         self.setStyleSheet(ss.mainwindow)
+        self.meal_data = load_meal_data(Session.user_id) or {}
+        self.result_page = ResultPage()
 
         root = QWidget()
         root.setStyleSheet(ss.page_bg)
@@ -133,13 +140,59 @@ class MainWindow(QMainWindow):
         self._stack.setStyleSheet(ss.page_bg)
         h.addWidget(self._stack)
 
+        self.daily_page = DailyMealsSubPage()
+        self.meal_planner = MealPlannerPage()
+        self.weekly_page = WeeklySummaryPage()
+        self.support_page = SupportPage()
         self.dashboard_page = DashboardPage()
+
         self._stack.addWidget(self.dashboard_page)
-        self._stack.addWidget(WeeklySummaryPage())
-        self._support_page = SupportPage()
-        self._stack.addWidget(self._support_page)
+        self._stack.addWidget(self.daily_page)
+        self._stack.addWidget(self.meal_planner)
+        self._stack.addWidget(self.weekly_page)
+        self._stack.addWidget(self.support_page)
+       
+
+        # DAILY → WEEKLY GRID
+        self.daily_page.go_to_weekly_meal.connect(
+            lambda: self._stack.setCurrentWidget(self.meal_planner)
+        )
+        # WEEKLY GRID → DAILY
+        self.meal_planner.day_selected.connect(self.open_daily_page)
+
+        # WEEKLY GRID → WEEKLY DETAIL
+        self.meal_planner.jump_to_week_day.connect(self.open_weekly_detail)
+
+        # WEEKLY DETAIL → BACK TO GRID (optional)
+        self.weekly_page.go_back.connect(
+            lambda: self._stack.setCurrentWidget(self.meal_planner)
+        )
+        # Weekly → Daily
+        self.meal_planner.go_to_daily.connect(self.open_daily_page)
+        
+        self.meal_planner.meal_data = self.meal_data
+        self.daily_page.meal_data = self.meal_data
+        self.weekly_page._weekly_meal.meal_data = self.meal_data
+
+        self.dashboard_page.meal_added.connect(self.handle_meal_data_change)
+
+        self.meal_planner.meal_data_changed.connect(self.handle_meal_data_change)
+        self.meal_planner.jump_to_week_day.connect(self.handle_jump_to_week)
+        self.meal_planner.jump_to_week_day.connect(self.show_weekly_page)
+        saved_data = load_meal_data(Session.user_id)
+        if saved_data:
+            self.meal_data = saved_data or {}
+
+            self.meal_planner.meal_data = self.meal_data
+            self.weekly_page._weekly_meal.meal_data = self.meal_data
+            self.meal_planner.update_week() 
+
         self.settings_page = SettingsPage()
+        self.settings_page.calculate_requested.connect(self.handle_calculation)
+        self.result_page.data_confirmed.connect(self.save_results)
+        self.result_page.cancelled.connect(lambda: self._stack.setCurrentWidget(self.settings_page))
         self._stack.addWidget(self.settings_page)
+        self._stack.addWidget(self.result_page)
 
         for pid, btn in self._sidebar.buttons().items():
             btn.clicked.connect(lambda checked, p=pid: self._switch_page(p))
@@ -153,8 +206,15 @@ class MainWindow(QMainWindow):
             self._switch_page("settings")  
 
     def _switch_page(self, page_id: str):
-        idx = {"dashboard": 0, "weekly": 1, "support": 2, "settings": 3}
-        self._stack.setCurrentIndex(idx.get(page_id, 0))
+        page_map = {
+        "dashboard": self.dashboard_page,
+        "weekly": self.daily_page,
+        "support": self.support_page, # support
+        "settings": self.settings_page
+        }
+
+        page = page_map.get(page_id, self.dashboard_page)
+        self._stack.setCurrentWidget(page)
         self._sidebar.set_active(page_id)
 
     def _placeholder(self, title: str, subtitle: str) -> QWidget:
@@ -173,4 +233,125 @@ class MainWindow(QMainWindow):
             self._sidebar.update_user()
         if hasattr(self, "dashboard_page"):
             self.dashboard_page.update_user()
+
+    def handle_calculation(self, data):
+        print("CALCULATE RECEIVED:", data)
+        self.result_page.clear_results()
+        self.result_page.update_data(data)
+        self._stack.setCurrentWidget(self.result_page)
+
+        self.result_page.play_entry_animation()
+
+    def save_results(self, bmi, tdee):
+        from Database_sor import save_user_profile, get_user_profile
+        user_id = Session.user_id
+        user = get_user_profile(user_id)
+        if not user:
+            return
+        
+        age, gender, height, weight, *_ = user
+        if str(gender).lower() == "male":
+            bmr = 10 * float(weight) + 6.25 * float(height) - 5 * int(age) + 5
+        else:
+            bmr = 10 * float(weight) + 6.25 * float(height) - 5 * int(age) - 161
+
+        save_user_profile(
+            user_id,
+            age,
+            gender,
+            height,
+            weight,
+            bmi,
+            bmr,
+            tdee
+        )
+        print("Saved for user:", user_id)
+        self.dashboard_page.update_tdee(tdee)
+        if hasattr(self, "daily_page"):
+            self.daily_page.update_tdee(tdee)
+        self._stack.setCurrentWidget(self.dashboard_page)
+
+    def handle_meal_data_change(self, date, meals_for_day):
+        """
+        CENTRAL SYNC CONTROLLER (CORRECT VERSION)
+        """
+
+        # 1. Save in MainWindow (ONLY source of truth)
+        self.meal_data[date] = meals_for_day
+
+        # 2. Sync ALL pages
+        self.meal_planner.meal_data = self.meal_data
+        if hasattr(self.weekly_page, "set_meal_data"):
+            self.weekly_page.set_meal_data(self.meal_data)
+
+        # Sync daily page (only if same date)
+        if hasattr(self.daily_page, "_current_date"):
+            current = self.daily_page._current_date.toString("yyyy-MM-dd")
+            if current == date:
+                self.daily_page.set_meals(meals_for_day)
+
+        # 3. Flatten for dashboard
+        meal_profiles = []
+        for foods in self.meal_data.values():
+            for food in foods:
+                if isinstance(food, str):
+                    profile = FOOD_DATABASE.get(food, {})
+                    meal_profiles.append({
+                        "profile": profile,
+                        "quantity": 1
+                    })
+                else:
+                    meal_profiles.append(food)
+
+        # 4. Update dashboard
+        self.dashboard_page.update_from_meals(meal_profiles)
+
+        # 5. Save database
+        save_meal_data(Session.user_id, date, meals_for_day)
+
+    def handle_jump_to_week(self, date_str):
+        self._stack.setCurrentWidget(self.weekly_page)
+        self._sidebar.set_active("weekly")
+        self.weekly_page.select_day(date_str)
+
+    def open_daily_page(self, date_str):
+        self._stack.setCurrentWidget(self.daily_page)
+
+        self.daily_page.set_date(date_str)
+        self.daily_page.meal_data = self.meal_data
+
+        if hasattr(self.daily_page, "_refresh"):
+            self.daily_page._refresh()
+
+    def open_daily_page(self, date_str):
+        self._stack.setCurrentWidget(self.daily_page)
+
+        self.daily_page.set_date(date_str)
+        self.daily_page.meal_data = self.meal_data
+        self.daily_page._refresh()
+
+
+    def open_weekly_detail(self, date_str):
+        self._stack.setCurrentWidget(self.weekly_page)
+        self.weekly_page.load_day(
+            date_str,
+            self.meal_data.get(date_str, [])
+        )
+
+    def set_date(self, date_str):
+        from PySide6.QtCore import QDate
+        self._current_date = QDate.fromString(date_str, "yyyy-MM-dd")
+    
+    def open_weekly_page_from_daily(self):
+        """Daily → Weekly Planner"""
+
+        if self.meal_planner not in [self._stack.widget(i) for i in range(self._stack.count())]:
+            self._stack.addWidget(self.meal_planner)
+
+        self._stack.setCurrentWidget(self.meal_planner)
+        self._sidebar.set_active("weekly")
+
+        date_str = self.daily_page.get_current_date().toString("yyyy-MM-dd")
+        self.meal_planner.select_day(date_str)
+
     

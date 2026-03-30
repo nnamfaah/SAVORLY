@@ -4,6 +4,7 @@ import os
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QStackedWidget,
 )
+from PySide6.QtCore import Signal
 import stylesheet as ss
 
 from daily_meals import DailyMealsSubPage
@@ -13,6 +14,9 @@ from week_meals_window import MealPlannerPage
 
 # ── WeeklySummaryPage  (used by mainwindow.py) ────────────────────────────
 class WeeklySummaryPage(QWidget):
+    meal_data_changed = Signal(str, dict)
+    go_back = Signal()
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setStyleSheet(ss.page_bg)
@@ -31,6 +35,9 @@ class WeeklySummaryPage(QWidget):
         self._stack.addWidget(self._mood_page)     # 1
         self._stack.addWidget(self._weekly_meal)   # 2
         root.addWidget(self._stack)
+
+        self._daily_page.meal_data_changed.connect(self._sync_to_weekly)
+        self._weekly_meal.meal_data_changed.connect(self._sync_to_daily)
 
         # Sync mood week when daily date changes
         self._daily_page._btn_prev.clicked.connect(self._sync_mood_from_daily)
@@ -68,3 +75,49 @@ class WeeklySummaryPage(QWidget):
                 self._mood_page._idx = i
                 self._mood_page._refresh()
                 break
+
+    def _sync_to_weekly(self, date_key, meals_for_day):
+        self._weekly_meal.meal_data[date_key] = meals_for_day
+        self._weekly_meal.update_week()
+        self.meal_data_changed.emit(date_key, meals_for_day)
+
+    def _sync_to_daily(self, date_key, meals_for_day):
+        self._daily_page.meal_data[date_key] = meals_for_day
+        if self._daily_page.get_current_date().toString("yyyy-MM-dd") == date_key:
+            self._daily_page.refresh_ui()
+        self.meal_data_changed.emit(date_key, meals_for_day)
+
+    def _emit_weekly_change(self, date_str, meals_for_day):
+        """
+        Called by MealPlannerPage whenever weekly meals change.
+        Re-emits to MainWindow.
+        """
+        self.meal_data_changed.emit(date_str, meals_for_day)
+
+    def update_from_meal_data(self, meal_data):
+        """
+        Called from MainWindow when daily meals change, so weekly view is updated.
+        """
+        self._weekly_meal.meal_data = meal_data
+        self._weekly_meal.update_week()
+
+    def select_day(self, date_str):
+        """
+        Jump to a specific date in the weekly view.
+        """
+        self._weekly_meal.select_date(date_str)
+        self._show(2)
+
+    def set_meal_data(self, meal_data):
+        self.meal_data = meal_data
+
+    def load_day(self, date_str, meals):
+        """Load selected day data"""
+        self.current_date = date_str
+        if hasattr(self, "_weekly_meal"):
+            self._weekly_meal.select_day(date_str)
+        self.current_meals = meals
+
+    def select_day(self, date_str):
+        """Alias for compatibility"""
+        self.load_day(date_str, [])

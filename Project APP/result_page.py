@@ -1,9 +1,10 @@
 import os
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QSizePolicy
+    QLabel, QLineEdit, QPushButton, QSizePolicy,
+    QGraphicsOpacityEffect
 )
-from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtCore import Qt, Signal, QSize, QPropertyAnimation, QEasingCurve, QPoint
 from PySide6.QtGui import QIcon
 
 import stylesheet as ss
@@ -18,13 +19,21 @@ def _icon(filename: str) -> QIcon:
 
 def make_label(text: str) -> QLabel:
     lbl = QLabel(text)
-    lbl.setObjectName("fieldLabel")
+    lbl.setAlignment(Qt.AlignCenter)
+    lbl.setStyleSheet("""
+        font-size: 12px;
+        font-weight: 600;
+        color: #888;
+        letter-spacing: 1px;
+    """)
     return lbl
 
 
 class ResultPage(QWidget):
     confirmed = Signal()
     cancelled = Signal()
+
+    data_confirmed = Signal(float, float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -36,6 +45,10 @@ class ResultPage(QWidget):
 
         self.bmi = None
         self.tdee = None
+
+        self.opacity_effect = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(self.opacity_effect)
+        self.opacity_effect.setOpacity(0)
 
         # Top bar
         top_bar = QHBoxLayout()
@@ -79,24 +92,33 @@ class ResultPage(QWidget):
         card_layout.setContentsMargins(30, 30, 30, 30)
         card_layout.setSpacing(20)
 
-        card_layout.addWidget(make_label("BMI"))
-        self.bmi_field = QLineEdit()
-        self.bmi_field.setPlaceholderText("Awaiting information...")
-        self.bmi_field.setReadOnly(True)
-        self.bmi_field.setFixedHeight(44)
-        self.bmi_field.setStyleSheet(ss.line_edit)
-        card_layout.addWidget(self.bmi_field)
+        result_layout = QVBoxLayout()
+        result_layout.setSpacing(18)
 
-        card_layout.addSpacing(8)
+        self.bmi_title = make_label("BMI")
+        self.bmi_value = QLabel("--")
+        self.bmi_value.setAlignment(Qt.AlignCenter)
+        self.bmi_value.setStyleSheet("""
+            font-size: 40px;
+            font-weight: 700;
+            color: #2E7D32;
+        """)
+        result_layout.addWidget(self.bmi_title)
+        result_layout.addWidget(self.bmi_value)
+        result_layout.addSpacing(8)
 
-        card_layout.addWidget(make_label("TDEE"))
-        self.tdee_field = QLineEdit()
-        self.tdee_field.setPlaceholderText("Awaiting information...")
-        self.tdee_field.setReadOnly(True)
-        self.tdee_field.setFixedHeight(44)
-        self.tdee_field.setStyleSheet(ss.line_edit)
-        card_layout.addWidget(self.tdee_field)
+        self.tdee_title = make_label("TDEE")
+        self.tdee_value = QLabel("--")
+        self.tdee_value.setAlignment(Qt.AlignCenter)
+        self.tdee_value.setStyleSheet("""
+            font-size: 36px;
+            font-weight: 700;
+            color: #C62828;
+        """)
+        result_layout.addWidget(self.tdee_title)
+        result_layout.addWidget(self.tdee_value)
 
+        card_layout.addLayout(result_layout)
         card_layout.addStretch()
 
         btn_row = QHBoxLayout()
@@ -115,7 +137,7 @@ class ResultPage(QWidget):
         self.confirm_btn.setMinimumWidth(200)
         self.confirm_btn.setStyleSheet(ss.btn_primary())
         self.confirm_btn.setCursor(Qt.PointingHandCursor)
-        self.confirm_btn.clicked.connect(self.confirmed.emit)
+        self.confirm_btn.clicked.connect(self._on_confirm)
 
         btn_row.addWidget(self.cancel_btn)
         btn_row.addSpacing(12)
@@ -128,11 +150,64 @@ class ResultPage(QWidget):
     def set_results(self, bmi, tdee):
         self.bmi = bmi
         self.tdee = tdee
-        self.bmi_field.setText(f"{bmi:.2f}")
-        self.tdee_field.setText(f"{tdee:.0f}")
+        self.bmi_value.setText(f"{bmi:.2f}")
+        self.tdee_value.setText(f"{tdee:.0f}")
 
     def clear_results(self):
         self.bmi = None
         self.tdee = None
-        self.bmi_field.clear()
-        self.tdee_field.clear()
+        self.bmi_value.setText("--")
+        self.tdee_value.setText("--")
+
+    def update_data(self, data):
+        try:
+            age = int(data["age"])
+            height = float(data["height"])
+            weight = float(data["weight"])
+            gender = data["gender"]
+            activity = data["activity"]
+
+            # ===== CALCULATE BMR =====
+            if gender.lower() == "male":
+                bmr = 10 * weight + 6.25 * height - 5 * age + 5
+            else:
+                bmr = 10 * weight + 6.25 * height - 5 * age - 161
+
+            # ===== TDEE =====
+            multipliers = [1.2, 1.375, 1.55, 1.725, 1.9]
+            if 0 <= activity < len(multipliers):
+                tdee = bmr * multipliers[activity]
+            else:
+                tdee = bmr
+
+            # ===== BMI =====
+            bmi = weight / ((height / 100) ** 2)
+
+            self.set_results(bmi, tdee)
+
+        except Exception as e:
+            print("Update data error:", e)
+
+    def _on_confirm(self):
+        if self.bmi is not None and self.tdee is not None:
+            self.data_confirmed.emit(self.bmi, self.tdee)  
+            self.confirmed.emit()
+
+    def play_entry_animation(self):
+        self.fade_anim = QPropertyAnimation(self.opacity_effect, b"opacity")
+        self.fade_anim.setDuration(400)
+        self.fade_anim.setStartValue(0)
+        self.fade_anim.setEndValue(1)
+        self.fade_anim.setEasingCurve(QEasingCurve.OutCubic)
+
+        start_pos = self.pos() + QPoint(0, 30)
+        end_pos = self.pos()
+        self.move(start_pos)
+
+        self.slide_anim = QPropertyAnimation(self, b"pos")
+        self.slide_anim.setDuration(400)
+        self.slide_anim.setStartValue(start_pos)
+        self.slide_anim.setEndValue(end_pos)
+        self.slide_anim.setEasingCurve(QEasingCurve.OutCubic)
+        self.fade_anim.start()
+        self.slide_anim.start()

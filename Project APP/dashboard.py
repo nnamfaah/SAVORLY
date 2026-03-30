@@ -5,15 +5,15 @@ from PySide6.QtWidgets import (
     QPushButton, QLineEdit, QFrame, QScrollArea,
     QSizePolicy, QGraphicsDropShadowEffect,
 )
-from PySide6.QtCore import Qt, QTimer, QRectF, Signal, QPropertyAnimation, QEasingCurve, QRect
+from PySide6.QtCore import Qt, QTimer, QRectF, Signal, QPropertyAnimation, QEasingCurve, QRect, Property
 from PySide6.QtGui import QFont, QPainter, QPen, QColor, QPixmap, QIcon
 
 import stylesheet as ss
 from session import Session
 from Analyzer import FoodAnalyzer
 from Input_section_food import InputProcessor 
-from Calculate_BBT import BBTCalculator
 from Database_sor import get_user_by_id
+from food_database import FOOD_DATABASE
 
 slots = ["Breakfast", "Lunch", "Dinner", "Late-night"]
 
@@ -104,12 +104,65 @@ def _shadow(w, radius=12, offset=3, alpha=18):
 class _Donut(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent); self.setFixedSize(150, 150)
+        self._progress = 0.0   # 0 → 1
+        self._target = 0.0
+        self.anim = QPropertyAnimation(self, b"progress")
+        self.anim.setDuration(800)
+        self.anim.setEasingCurve(QEasingCurve.OutCubic)
+        self.glow = QGraphicsDropShadowEffect(self)
+        self.glow.setBlurRadius(0)
+        self.glow.setColor(QColor("#FFFFFF"))
+        self.glow.setOffset(0)
+        self.setGraphicsEffect(self.glow)
+
+        self.glow_anim = QPropertyAnimation(self.glow, b"blurRadius")
+        self.glow_anim.setDuration(600)
+        self.glow_anim.setStartValue(0)
+        self.glow_anim.setEndValue(25)
+        self.glow_anim.setEasingCurve(QEasingCurve.OutCubic)
+
+        self.glow_fade = QPropertyAnimation(self.glow, b"blurRadius")
+        self.glow_fade.setDuration(600)
+        self.glow_fade.setStartValue(25)
+        self.glow_fade.setEndValue(0)
+        self.glow_fade.setEasingCurve(QEasingCurve.InOutCubic)
+
+    def getProgress(self):
+        return self._progress
+    
+    def setProgress(self, value):
+        self._progress = value
+        self.update()
+
+    progress = Property(float, getProgress, setProgress)
+
+    def set_value(self, percent):
+        percent = max(0.0, min(1.0, percent))  # clamp
+
+        self.anim.stop()
+        self.anim.setStartValue(self._progress)
+        self.anim.setEndValue(percent)
+        self.anim.start()
+
+        self.trigger_glow()
+
+    def trigger_glow(self):
+        self.glow_anim.start()
+
+        # fade out after glow
+        self.glow_anim.finished.connect(
+            lambda: QTimer.singleShot(150, self.glow_fade.start)
+        )
+
     def paintEvent(self, event):
         p = QPainter(self); p.setRenderHint(QPainter.Antialiasing)
         rect = QRectF(14, 14, 122, 122)
         # track
-        p.setPen(QPen(QColor("#D8D2C5"), 14, Qt.SolidLine, Qt.FlatCap))
+        p.setPen(QPen(QColor("#D8D2C5"), 14, Qt.SolidLine, Qt.FlatCap)) # Circle
         p.setBrush(Qt.NoBrush); p.drawEllipse(rect)
+        p.setPen(QPen(QColor("#FFFFFF"), 14, Qt.SolidLine, Qt.FlatCap)) # Progress
+        span_angle = int(-360 * self._progress * 16)
+        p.drawArc(rect, 90 * 16, span_angle)
         p.setPen(QColor(ss.tdee))
         p.setFont(QFont("Inria Serif", 13, QFont.Bold))
         p.drawText(rect, Qt.AlignCenter, "TDEE"); p.end()
@@ -275,29 +328,45 @@ class _AddMealsPanel(QWidget):
         text = self._inp.text().strip()
         if not text:
             return
-
+        
         processed = self.input_processor.process(text)
         analysis_results = self.analyzer.analyze(processed.food_text)
+
+        current_slot = self._current_slot
+
+        from datetime import datetime
+        date_key = datetime.now().strftime("%Y-%m-%d")
+
+        new_foods = []
 
         for food in analysis_results:
             name = food.get("name", "Unknown")
             portion_name = food.get("portion_name", "medium")
             quantity = food.get("quantity", 1)
 
-            macros = food.get("macros", {})
-            macros.setdefault("protein", 0)
-            macros.setdefault("carbs", 0)
-            macros.setdefault("fat", 0)
-            macros.setdefault("vitamins", 0)
-            macros["minerals"] = macros.get("minerals", macros.get("mineral", 0))
+            raw_macros = food.get("macros", {}) or {}
+            macros = {
+                "protein": int(raw_macros.get("protein", 0)),
+                "carbs": int(raw_macros.get("carbs", 0)),
+                "fat": int(raw_macros.get("fat", 0)),
+                "vitamins": int(raw_macros.get("vitamins", 0)),
+                "minerals": int(raw_macros.get("minerals", raw_macros.get("mineral", 0)))
+            }
 
-            food["macros"] = macros
-            food["quantity"] = quantity
+            normalized_food = {
+                "name": name,
+                "macros": macros,
+                "quantity": int(quantity),
+                "meal": current_slot,   
+                "date": date_key             
+            }
 
             display_text = f"{name} • {portion_name} x{quantity}"
 
-            self._foods.append(food)
-            self._add_chip(display_text, food)
+            self._foods.append(normalized_food)
+            self._add_chip(display_text, normalized_food)
+        
+        self._foods.extend(new_foods)
 
         self._inp.clear()
         self._food_scroll.setVisible(True)
@@ -306,7 +375,6 @@ class _AddMealsPanel(QWidget):
             self._has_added_once = True
             self.meal_added.emit()
 
-    
         self.foods_changed.emit(self._foods)
 
     def _add_chip(self, text, food_name):
@@ -366,6 +434,9 @@ class _AddMealsPanel(QWidget):
 
 # DashboardPage
 class DashboardPage(QWidget):
+    open_planner_requested = Signal()
+    meal_added = Signal()
+
     def __init__(self, parent=None):
         super().__init__(parent); self.setStyleSheet(ss.page_bg)
         self.load_user_data()
@@ -403,7 +474,12 @@ class DashboardPage(QWidget):
         bt = QLabel("Today's Balance"); bt.setStyleSheet(ss.section)
         bv.addWidget(bt)
         macro_row = QHBoxLayout(); macro_row.setSpacing(14)
-        macro_row.addWidget(_Donut())
+        donut_layout = QVBoxLayout()
+        self.donut = _Donut()
+
+        donut_layout.addWidget(self.donut, alignment=Qt.AlignCenter)
+
+        macro_row.addLayout(donut_layout)
 
         # Macro
         self.macro_labels = {}
@@ -474,12 +550,19 @@ class DashboardPage(QWidget):
         tdee = user.get("tdee", 0)
 
     # Example display (you can customize UI)
-        print("BMI:", bmi)
-        print("TDEE:", tdee)
+        #self.bmi_label.setText(f"{bmi:.2f}")
+        #self.tdee_label.setText(f"{int(tdee)}")
 
     # If you have labels:
     # self.bmi_label.setText(str(bmi))
     # self.tdee_label.setText(str(tdee))
+    def update_data(self, bmi, tdee):
+        self.bmi_label.setText(f"{bmi:.2f}")
+        self.tdee_label.setText(f"{int(tdee)}")
+
+    def update_from_meals(self, meal_data):
+        """Wrapper for meal update events from planner"""
+        self.update_dashboard_macros(meal_data)
 
     def update_dashboard_macros(self, foods):
         total = {
@@ -489,19 +572,29 @@ class DashboardPage(QWidget):
             "vitamins": 0,
             "minerals": 0
         }
+
         for item in foods:
-            profile = item.get("profile") or item.get("macros") or {}
+            # If item is a string, get its profile from FOOD_DATABASE
+            if isinstance(item, str):
+                profile = FOOD_DATABASE.get(item, {})
+                qty = 1
+        # If item is already a dict with 'profile' or 'macros', keep old logic
+            elif isinstance(item, dict):
+                profile = item.get("profile") or item.get("macros") or {}
+                qty = item.get("quantity", 1)
+            else:
+                continue  # skip unknown types
+
             if not profile:
                 continue
 
-            qty = item.get("quantity", 1)
             total["protein"]  += profile.get("protein", 0) * qty
             total["carbs"]    += profile.get("carbs", 0) * qty
             total["fat"]      += profile.get("fat", 0) * qty
-            minerals = profile.get("minerals", profile.get("mineral", 0))
-            total["minerals"] += minerals * qty
+            total["minerals"] += profile.get("minerals", profile.get("mineral", 0)) * qty
             total["vitamins"] += profile.get("vitamins", 0) * qty
 
+        # Update labels
         for key, value in total.items():
             if key in self.macro_labels:
                 self.macro_labels[key].setText(str(round(value, 2)))
@@ -517,12 +610,16 @@ class DashboardPage(QWidget):
         for key, value in total.items():
             if key not in self.macro_labels:
                 continue
-            self.macro_labels[key].setText(str(round(value, 2)))
             percent = min(value / max_values[key], 1.0)
             QTimer.singleShot(
-            300,
-            lambda k=key, p=percent: self._animate_bar(k, p)
-)
+                300,
+                lambda k=key, p=percent: self._animate_bar(k, p)
+            )
+
+    def update_tdee(self, tdee):
+        max_tdee = 5000
+        percent = tdee / max_tdee
+        self.donut.set_value(percent)
 
     def _animate_bar(self, key, percent):
         bar = self.macro_bars[key]

@@ -16,8 +16,8 @@ class DailyMealsSubPage(QWidget):
     """Record of Daily Meals sub-page cleaned up for SAVORLY theme."""
     go_to_weekly_meal = Signal()
     go_to_mood        = Signal()
+    meal_data_changed = Signal(str, list) 
 
-    _SAMPLE: dict = {}  # {QDate: {"MealName": [foods], "macros": {...}}}
 
     _MEALS = [
         ("Breakfast", "🌤️"),
@@ -30,6 +30,7 @@ class DailyMealsSubPage(QWidget):
         super().__init__(parent)
         self.setStyleSheet(ss.page_bg)
         self._current_date = QDate.currentDate()
+        self.meal_data = {}
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -51,6 +52,11 @@ class DailyMealsSubPage(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.addWidget(scroll)
 
+        self._refresh()
+
+    def set_day_data(self, date_key, meals):
+        self._current_date = QDate.fromString(date_key, "yyyy-MM-dd")
+        self.meal_data[date_key] = meals
         self._refresh()
 
     def _build_header(self):
@@ -88,7 +94,7 @@ class DailyMealsSubPage(QWidget):
 
         self._btn_prev.clicked.connect(self._go_prev)
         self._btn_next.clicked.connect(self._go_next)
-
+        
         nav_layout.addWidget(self._btn_prev)
         nav_layout.addWidget(cal_btn)
         nav_layout.addWidget(self._date_lbl)
@@ -140,7 +146,7 @@ class DailyMealsSubPage(QWidget):
         v.addWidget(sep)
 
         self._macro_labels: dict[str, QLabel] = {}
-        for key in ("Protein", "Carbs", "Fats", "Mineral", "Fiber"):
+        for key in ("Protein", "Carbs", "Fats", "Vitamins", "Mineral"):
             row = QHBoxLayout()
             val_lbl = _label("0", f"font-size:14px; font-weight:700; color:{ss.text};")
             self._macro_labels[key] = val_lbl
@@ -175,42 +181,119 @@ class DailyMealsSubPage(QWidget):
         h.addLayout(col)
         h.addStretch()
         return c
+    
+    def set_day_data(self, date_key, meals_for_day):
+        self.current_date_str = date_key
+        self.day_meals = meals_for_day
+        self._refresh()
 
     def _refresh(self):
         self._date_lbl.setText(self._current_date.toString("dddd, d MMM"))
 
+        # Clear UI
         while self._meal_col.count():
             item = self._meal_col.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
-        current_data = self._SAMPLE.get(self._current_date)
-        if not current_data:
-            current_data = {
-                "macros": {"Protein": 0, "Carbs": 0, "Fats": 0, "Mineral": 0, "Fiber": 0},
-                "meals": {meal: [] for meal, _ in self._MEALS}
-            }
+        date_key = self._current_date.toString("yyyy-MM-dd")
+        day_meals = self.meal_data.get(date_key, {})  
+
+        grouped = {meal: [] for meal, _ in self._MEALS}
+
+        macros = {
+            "protein": 0,
+            "carbs": 0,
+            "fat": 0,
+            "vitamins": 0,
+            "minerals": 0
+        }
+
+        for meal_type, foods in day_meals.items():
+            for food in foods:
+
+                # CASE 1: dict (normal)
+                if isinstance(food, dict):
+                    name = food.get("name", "Unknown")
+                    qty = food.get("quantity", 1)
+
+                    grouped.setdefault(meal_type, []).append(name)
+
+                    profile = food.get("macros") or food.get("profile") or {}
+
+                # CASE 2: string fallback
+                elif isinstance(food, str):
+                    from food_database import FOOD_DATABASE
+
+                    name = food
+                    qty = 1
+                    grouped.setdefault(meal_type, []).append(name)
+
+                    profile = FOOD_DATABASE.get(food, {})
+
+                else:
+                    continue
+
+                macros["protein"]  += profile.get("protein", 0) * qty
+                macros["carbs"]    += profile.get("carbs", 0) * qty
+                macros["fat"]      += profile.get("fat", 0) * qty
+                macros["vitamins"] += profile.get("vitamins", 0) * qty
+                macros["minerals"] += profile.get("minerals", profile.get("mineral", 0)) * qty
+
 
         for meal_name, icon in self._MEALS:
-            foods_list = current_data["meals"].get(meal_name, [])
+            foods_list = grouped.get(meal_name, [])
             foods_text = ", ".join(foods_list) if foods_list else ""
+
             self._meal_col.addWidget(
                 self._build_meal_row(meal_name, icon, foods_text)
             )
 
-        macros = current_data.get("macros", {})
-        for key, lbl in self._macro_labels.items():
-            lbl.setText(str(macros.get(key, 0)))
+        # ✅ LABEL MAPPING
+        key_map = {
+            "Protein": "protein",
+            "Carbs": "carbs",
+            "Fats": "fat",
+            "Vitamin": "vitamins",
+            "Mineral": "minerals"
+        }
 
-        progress_percent = 0 
-        self._donut.setStyleSheet(
-            f"background: qradialgradient(cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5, "
-            f"stop:0.6 {ss.light_green}, "                                
-            f"stop:0.601 rgba(255,255,255,0.3), "                       
-            f"stop:{0.6 + (0.4 * progress_percent/100)} {ss.white}, "     
-            f"stop:{0.601 + (0.4 * progress_percent/100)} rgba(255,255,255,0.3)); "
-            f"border-radius: 70px; font-size:18px; font-weight:700; color:{ss.text};"
+        for key, lbl in self._macro_labels.items():
+            real_key = key_map.get(key, key.lower())
+            lbl.setText(str(round(macros.get(real_key, 0), 2)))
+
+        # ✅ CALORIES (MATCH DASHBOARD)
+        calories = (
+            macros["protein"] * 4 +
+            macros["carbs"] * 4 +
+            macros["fat"] * 9
         )
+
+        tdee_target = getattr(self, "_tdee_target", 2000) or 2000
+        progress_percent = min((calories / tdee_target) * 100, 100)
+
+        # ✅ DONUT UPDATE
+        self._donut.setStyleSheet(
+            f"""
+            background: qradialgradient(
+                cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,
+                stop:0.6 {ss.light_green},
+                stop:0.601 rgba(255,255,255,0.3),
+                stop:{0.6 + (0.4 * progress_percent/100)} {ss.white},
+                stop:{0.601 + (0.4 * progress_percent/100)} rgba(255,255,255,0.3)
+            );
+            border-radius: 70px;
+            font-size:18px;
+            font-weight:700;
+            color:{ss.text};
+            """
+        )
+    def update_tdee(self, tdee):
+        self._tdee_target = tdee
+        self._refresh()
+
+    def update_and_emit(self, date_key, new_data):
+        self.meal_data_changed.emit(date_key, new_data)
 
     def _go_prev(self):
         self._current_date = self._current_date.addDays(-1)
@@ -223,6 +306,15 @@ class DailyMealsSubPage(QWidget):
     def get_current_date(self) -> QDate:
         return self._current_date
 
-    def set_date(self, d: QDate):
-        self._current_date = d
-        self._refresh()
+    def set_date(self, qdate):
+        self.current_date = qdate
+        self.refresh_ui()
+
+    def set_meals(self, meals):
+        """Set meals for current day"""
+        self.meals = meals
+        self.refresh_ui()
+
+    def refresh_ui(self):
+        """Alias for compatibility"""
+        self.refresh_ui()

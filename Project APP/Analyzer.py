@@ -7,6 +7,9 @@ from food_database import FOOD_DATABASE
 class FoodAnalyzer:
     def __init__(self):
 
+        # -------------------------
+        # CONFIG
+        # -------------------------
         self.stop_words = {
             "ate","with","today","have","and","for","the","this",
             "morning","breakfast","lunch","dinner","evening"
@@ -38,9 +41,7 @@ class FoodAnalyzer:
         return text
 
     def normalize_word(self, word):
-        if word.endswith("s"):
-            return word[:-1]
-        return word
+        return word[:-1] if word.endswith("s") else word
 
     def normalize_food_name(self, text):
         text = text.lower().strip()
@@ -48,31 +49,31 @@ class FoodAnalyzer:
         text = re.sub(r"\s+", " ", text)
 
         # Apply synonyms
-        if text in self.food_synonyms:
-            return self.food_synonyms[text]
+        for key, value in self.food_synonyms.items():
+            if key in text:
+                text = text.replace(key, value)
 
         return text
 
     # -------------------------
-    # FOOD DETECTION
+    # FOOD DETECTION 
     # -------------------------
     def detect_foods(self, text):
 
-        text = self.clean_text(text)
+        text = self.normalize_food_name(self.clean_text(text))
 
         detected = []
         unknown = []
 
-        # Check multi-word foods FIRST (important)
+        # Match full phrases safely
         for food in sorted(self.food_database.keys(), key=len, reverse=True):
-            if food in text:
+            if f" {food} " in f" {text} ":
                 detected.append(food)
 
         words = text.split()
 
         for word in words:
-            normalized = self.normalize_word(word)
-            normalized = self.normalize_food_name(normalized)
+            normalized = self.normalize_food_name(self.normalize_word(word))
 
             if normalized in self.food_database and normalized not in detected:
                 detected.append(normalized)
@@ -80,6 +81,10 @@ class FoodAnalyzer:
             elif normalized not in self.stop_words and len(normalized) > 3:
                 if normalized not in self.food_database:
                     unknown.append(normalized)
+
+        # remove duplicates
+        detected = list(dict.fromkeys(detected))
+        unknown = list(dict.fromkeys(unknown))
 
         return detected, unknown
 
@@ -99,14 +104,18 @@ class FoodAnalyzer:
             if word.isdigit():
                 qty = int(word)
                 if i + 1 < len(words):
-                    food = self.normalize_food_name(self.normalize_word(words[i+1]))
+                    food = self.normalize_food_name(
+                        self.normalize_word(words[i+1])
+                    )
                     portions[food] = qty
 
             # word portion (two eggs)
             elif word in self.portion_words:
                 qty = self.portion_words[word]
                 if i + 1 < len(words):
-                    food = self.normalize_food_name(self.normalize_word(words[i+1]))
+                    food = self.normalize_food_name(
+                        self.normalize_word(words[i+1])
+                    )
                     portions[food] = qty
 
         return portions
@@ -135,11 +144,9 @@ class FoodAnalyzer:
     # CALCULATIONS
     # -------------------------
     def estimate_calories(self, profile, portion):
-
         carbs = profile["carbs"] * portion
         protein = profile["protein"] * portion
         fat = profile["fat"] * portion
-
         return (carbs * 4) + (protein * 4) + (fat * 9)
 
     def calculate_health_score(self, profile):
@@ -185,7 +192,7 @@ class FoodAnalyzer:
             print("DB Error:", e)
 
     # -------------------------
-    # MAIN ANALYSIS
+    # MAIN ANALYSIS 
     # -------------------------
     def analyze(self, text):
 
@@ -194,13 +201,7 @@ class FoodAnalyzer:
 
         results = []
 
-    
-        recognized = list(dict.fromkeys(recognized))
-        unknown = list(dict.fromkeys(unknown))
-
-    # -------------------------
-    # KNOWN FOODS
-    # -------------------------
+        # ---- Known foods ----
         for food in recognized:
 
             profile = self.food_database[food]
@@ -210,23 +211,21 @@ class FoodAnalyzer:
             score = self.calculate_health_score(profile)
 
             results.append({
-            "name": food.title(),
-            "macros": {
-                "protein": profile.get("protein", 0),
-                "carbs": profile.get("carbs", 0),
-                "fat": profile.get("fat", 0),
-                "vitamins": profile.get("vitamins", 0),
-                "minerals": profile.get("minerals", 0)
-            },
-            "portion": portion,
-            "calories": calories,
-            "health_score": score,
-            "source": "database"
+                "name": food.title(),
+                "macros": {
+                    "protein": profile.get("protein", 0),
+                    "carbs": profile.get("carbs", 0),
+                    "fat": profile.get("fat", 0),
+                    "vitamins": profile.get("vitamins", 0),
+                    "minerals": profile.get("minerals", 0)
+                },
+                "portion": portion,
+                "calories": calories,
+                "health_score": score,
+                "source": "database"
             })
 
-    # -------------------------
-    # UNKNOWN FOODS
-    # -------------------------
+        # ---- Unknown foods ----
         for food in unknown:
 
             profile = self.estimate_unknown(food)
@@ -238,57 +237,29 @@ class FoodAnalyzer:
             self.save_food(food, profile, score)
 
             results.append({
-            "name": food.title(),
-            "macros": {
-                "protein": profile.get("protein", 0),
-                "carbs": profile.get("carbs", 0),
-                "fat": profile.get("fat", 0),
-                "vitamins": profile.get("vitamins", 0),
-                "minerals": profile.get("minerals", 0)
-            },
-            "portion": portion,
-            "calories": calories,
-            "health_score": score,
-            "source": "estimated"
+                "name": food.title(),
+                "macros": {
+                    "protein": profile.get("protein", 0),
+                    "carbs": profile.get("carbs", 0),
+                    "fat": profile.get("fat", 0),
+                    "vitamins": profile.get("vitamins", 0),
+                    "minerals": profile.get("minerals", 0)
+                },
+                "portion": portion,
+                "calories": calories,
+                "health_score": score,
+                "source": "estimated"
             })
 
         return results
 
-
-    def detect_foods(self, text):
-
-        text = self.clean_text(text)
-
-        detected = []
-        unknown = []
-
-        # Match full phrases safely
-        for food in sorted(self.food_database.keys(), key=len, reverse=True):
-            if f" {food} " in f" {text} ":
-                detected.append(food)
-
-        words = text.split()
-
-        for word in words:
-            normalized = self.normalize_word(word)
-            normalized = self.normalize_food_name(normalized)
-
-            if normalized in self.food_database and normalized not in detected:
-                detected.append(normalized)
-
-            elif normalized not in self.stop_words and len(normalized) > 3:
-                if normalized not in self.food_database:
-                    unknown.append(normalized)
-
-        return detected, unknown
-
     # -------------------------
-    # RECOMMENDATION ENGINE
+    # RECOMMENDATION ENGINE 
     # -------------------------
     def generate_recommendation(self, results):
 
-        total_protein = sum(r["profile"]["protein"] for r in results)
-        total_fat = sum(r["profile"]["fat"] for r in results)
+        total_protein = sum(r["macros"]["protein"] for r in results)
+        total_fat = sum(r["macros"]["fat"] for r in results)
 
         tips = []
 

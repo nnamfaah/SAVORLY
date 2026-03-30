@@ -62,6 +62,17 @@ def init_database():
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
     """)
+    # MEALS table (for meal planner)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS meals(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        meal_type TEXT NOT NULL,
+        food TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    """)
 
     # FOOD HISTORY (simple log)
     cur.execute("""
@@ -169,7 +180,6 @@ def save_user_profile(user_id, age, gender, height, weight, bmi, bmr, tdee):
     conn = connect()
     cursor = conn.cursor()
 
-    # ✅ FIX TABLE NAME
     cursor.execute("SELECT user_id FROM user_profiles WHERE user_id = ?", (user_id,))
     exists = cursor.fetchone()
 
@@ -286,6 +296,71 @@ def get_food_history(limit=10):
     rows = cur.fetchall()
     conn.close()
     return rows
+
+def save_meal_data(user_id, date, meals_for_day):
+    import sqlite3
+
+    conn = sqlite3.connect("savorly.db")
+    cur = conn.cursor()
+    cur.execute("""
+        DELETE FROM meals
+        WHERE user_id=? AND date=?
+    """, (user_id, date))
+
+    # insert new data
+    for meal_type, foods in meals_for_day.items():
+        for food in foods:
+            cur.execute("""
+                INSERT INTO meals (user_id, date, meal_type, food)
+                VALUES (?, ?, ?, ?)
+            """, (user_id, date, meal_type, food))
+
+    conn.commit()
+    conn.close()
+
+def load_meal_data(user_id):
+    conn = sqlite3.connect("savorly.db")
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT date, meal_type, food
+        FROM meals
+        WHERE user_id=?
+    """, (user_id,))
+
+    rows = cur.fetchall()
+    conn.close()
+
+    meal_data = {}
+
+    for date, meal_type, food in rows:
+        meal_data.setdefault(date, {})\
+                 .setdefault(meal_type, [])\
+                 .append(food)
+
+    return meal_data
+
+def load_meal_data(user_id):
+    conn = sqlite3.connect("savorly.db")
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT date, meal_type, food
+        FROM meals
+        WHERE user_id=? 
+    """, (user_id,))
+
+    rows = cur.fetchall()
+    conn.close()
+
+    meal_data = {}
+
+    for date, meal_type, food in rows:
+        meal_data.setdefault(date, {})\
+                 .setdefault(meal_type, [])\
+                 .append(food)
+
+    return meal_data
 
 # ───────────────────────────────
 # AI RECOMMENDATION STORAGE

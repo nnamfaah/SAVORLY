@@ -1,7 +1,7 @@
 import os
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QLabel, QLineEdit, QComboBox, QPushButton, QSizePolicy
+    QLabel, QLineEdit, QComboBox, QPushButton, QSizePolicy, QGraphicsOpacityEffect
 )
 from PySide6.QtCore import Qt, Signal, QSize, QPropertyAnimation, QEasingCurve, QPoint, QTimer
 from PySide6.QtGui import QIcon, QCursor
@@ -9,6 +9,7 @@ from PySide6.QtGui import QIcon, QCursor
 from Database_sor import get_user_profile
 from session import Session
 import stylesheet as ss
+from result_page import ResultPage
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -60,6 +61,8 @@ class SettingsPage(QWidget):
         super().__init__(parent)
         self.setObjectName("contentArea")
         top_bar = QHBoxLayout()
+        top_bar.setSpacing(0)
+
         outer = QVBoxLayout(self)
         outer.setContentsMargins(40, 40, 40, 40)
         title = QLabel("Settings Nutritional Profile")
@@ -69,35 +72,47 @@ class SettingsPage(QWidget):
         header = QVBoxLayout()
         header.addWidget(title)
         header.addWidget(sub)
-        outer.addLayout(header)
+        top_bar.addLayout(header)
+        top_bar.addStretch()
         outer.addSpacing(24)
 
-        notif_btn = QPushButton()
-        notif_btn.setObjectName("notifBtn")
-        notif_btn.setFixedSize(36, 36)
+        notif_btn = QPushButton("🔔")
+        notif_btn.setFixedSize(36,36)
         notif_btn.setCursor(Qt.PointingHandCursor)
-        bell = QLabel("🔔"); bell.setFixedSize(40,40); bell.setAlignment(Qt.AlignCenter)
-        bell.setStyleSheet(ss.bell_icon)
-
-        av_wrap = QWidget(); av_wrap.setFixedSize(44,44)
-        av_wrap.setStyleSheet(f"background:{ss.light_green}; border-radius:22px;")
-        av_inner = QVBoxLayout(av_wrap); av_inner.setContentsMargins(0,0,0,0)
-        av_lbl = QLabel("👤"); av_lbl.setAlignment(Qt.AlignCenter)
-        av_lbl.setStyleSheet("font-size:20px; background:transparent;")
-        av_inner.addWidget(av_lbl)
-
+        notif_btn.setStyleSheet(ss.bell_icon)
         top_bar.addWidget(notif_btn)
         top_bar.addSpacing(10)
+
+        av_wrap = QWidget()
+        av_wrap.setFixedSize(44, 44)
+        av_wrap.setStyleSheet(f"background:{ss.light_green}; border-radius:22px;")
+        av_inner = QVBoxLayout(av_wrap)
+        av_inner.setContentsMargins(0, 0, 0, 0)
+        av_lbl = QLabel("👤")
+        av_lbl.setAlignment(Qt.AlignCenter)
+        av_lbl.setStyleSheet("font-size:20px; background:transparent;")
+        av_inner.addWidget(av_lbl)
         top_bar.addWidget(av_wrap)
+
         outer.addLayout(top_bar)
         outer.addSpacing(24)
+
+        self.status_label = QLabel("Saved ✅")
+
+        self.status_label.setStyleSheet("color: #6E8F5E; font-weight:600;")
+        self.status_label.setAlignment(Qt.AlignRight)
+
+        # Opacity effect
+        self.opacity_effect = QGraphicsOpacityEffect()
+        self.status_label.setGraphicsEffect(self.opacity_effect)
+        self.opacity_effect.setOpacity(0)  # hidden initially
+
+        outer.addWidget(self.status_label)
 
         self.autosave_timer = QTimer()
         self.autosave_timer.setInterval(800)  # 0.8 sec delay
         self.autosave_timer.setSingleShot(True)
         self.autosave_timer.timeout.connect(self.auto_save)
-
-        self.status_label = QLabel("Saved ✅")
 
         self.gender_combo = AnimatedComboBox()
         self.gender_combo.addItems(["Male", "Female"])
@@ -224,29 +239,32 @@ class SettingsPage(QWidget):
                 self.age_input.setStyleSheet(ss.input_invalid)
                 valid = False
         # Gender
-        if "select" in self.gender_combo.currentText().lower():
+        if self.gender_combo.currentIndex() < 0:
             valid = False
         # Activity
-        if self.activity_combo.currentIndex() == 0:
+        if self.activity_combo.currentIndex() < 0:
             valid = False
         self.calc_btn.setEnabled(valid)
         return valid
     
     def trigger_autosave(self):
-        self.validate_inputs()   # keep validation working
+        self.status_label.setText("Saving...")
+        self.opacity_effect.setOpacity(1)
+        self.validate_inputs()
         self.autosave_timer.start()
 
     def _on_calculate(self):
         if not self.validate_inputs():
             return
 
-        self.calculate_requested.emit({
+        data = {
             "gender": self.gender_combo.currentText(),
             "weight": self.weight_input.text(),
             "height": self.height_input.text(),
             "age": self.age_input.text(),
             "activity": self.activity_combo.currentIndex(),
-        })
+        }
+        self.calculate_requested.emit(data)
 
     def get_data(self):
         return {
@@ -263,7 +281,7 @@ class SettingsPage(QWidget):
             return
 
         try:
-            _, age, gender, height, weight, *_ = user
+            age, gender, height, weight, bmi, bmr, tdee = user
 
             self.age_input.setText(str(age))
             self.height_input.setText(str(height))
@@ -273,13 +291,13 @@ class SettingsPage(QWidget):
                 gender = "Male" if int(gender) == 1 else "Female"
 
             gender = str(gender).strip().capitalize()
-
             index = self.gender_combo.findText(gender, Qt.MatchFixedString)
             if index >= 0:
                 self.gender_combo.setCurrentIndex(index)
+            self.activity_combo.setCurrentIndex(1)
 
-            # Trigger validation after loading
             self.validate_inputs()
+            self.calc_btn.setEnabled(True)
 
         except Exception as e:
             print("Load user error:", e)
@@ -302,7 +320,11 @@ class SettingsPage(QWidget):
                 bmr = 10 * weight + 6.25 * height - 5 * age - 161
 
             multipliers = [1.2, 1.375, 1.55, 1.725, 1.9]
-            tdee = bmr * multipliers[activity - 1] if activity > 0 else bmr
+
+            if 0 <= activity < len(multipliers):
+                tdee = bmr * multipliers[activity]
+            else:
+                tdee = bmr
 
             bmi = weight / ((height / 100) ** 2)
 
@@ -321,9 +343,32 @@ class SettingsPage(QWidget):
             )
 
             self.status_label.setText("Saved ✅")
+            self.show_saved_animation()
 
         except Exception as e:
             print("Auto-save error:", e)
+
+    def show_saved_animation(self):
+        # Fade IN
+        self.fade_in = QPropertyAnimation(self.opacity_effect, b"opacity")
+        self.fade_in.setDuration(300)
+        self.fade_in.setStartValue(0)
+        self.fade_in.setEndValue(1)
+        self.fade_in.setEasingCurve(QEasingCurve.OutCubic)
+
+        # Fade OUT
+        self.fade_out = QPropertyAnimation(self.opacity_effect, b"opacity")
+        self.fade_out.setDuration(600)
+        self.fade_out.setStartValue(1)
+        self.fade_out.setEndValue(0)
+        self.fade_out.setEasingCurve(QEasingCurve.InOutCubic)
+
+        # Chain animations
+        self.fade_in.finished.connect(
+            lambda: QTimer.singleShot(1000, self.fade_out.start)
+        )
+
+        self.fade_in.start()
 
 
     

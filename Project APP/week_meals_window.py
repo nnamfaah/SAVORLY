@@ -292,17 +292,17 @@ class MealCell(QFrame):
         for food in self._get_foods():
             self.food_list.addItem(f"{self.food_list.count()+1}. {food}")
     def add_food(self):
-<<<<<<< HEAD
-        dialog = QDialog(self)
-=======
         dialog = QDialog()        
->>>>>>> d9c70dd7bb6f70420beec8ce774d7608a42630bb
         dialog.setWindowTitle("Add Food")
         dialog.setFixedSize(300, 150)
 
         label = QLabel("Food name:")
         input_field = QLineEdit()
         input_field.setPlaceholderText("Enter food name")
+        self.parent_page.meal_data_changed.emit(
+            self.date_key,
+            self.parent_page.meal_data[self.date_key]
+        )
 
         ok_btn = QPushButton("OK")
         cancel_btn = QPushButton("Cancel")
@@ -316,10 +316,6 @@ class MealCell(QFrame):
         layout.addWidget(label)
         layout.addWidget(input_field)
         layout.addLayout(btn_layout)
-<<<<<<< HEAD
-
-=======
->>>>>>> d9c70dd7bb6f70420beec8ce774d7608a42630bb
         dialog.setLayout(layout)
 
         dialog.setStyleSheet("""
@@ -328,21 +324,6 @@ class MealCell(QFrame):
             }
             QLabel {
                 font-size: 14px;
-<<<<<<< HEAD
-            }
-            QLineEdit {
-                padding: 6px;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-            }
-            QPushButton {
-                min-width: 70px;
-                padding: 5px;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #e0e0e0;
-=======
                 color: #2d3a2e;
                 background-color: #f5f5f5;
             }
@@ -372,7 +353,6 @@ class MealCell(QFrame):
             }
             QPushButton:pressed {
                 background-color: #3d5240;
->>>>>>> d9c70dd7bb6f70420beec8ce774d7608a42630bb
             }
         """)
 
@@ -387,13 +367,8 @@ class MealCell(QFrame):
 
         ok_btn.clicked.connect(on_ok)
         cancel_btn.clicked.connect(dialog.reject)
-<<<<<<< HEAD
-
-        dialog.exec_()
-=======
         dialog.exec_()
     
->>>>>>> d9c70dd7bb6f70420beec8ce774d7608a42630bb
     def delete_food(self, item):
         name=item.text().split(". ",1)[1]
         foods=self.parent_page.meal_data.get(self.date_key,{}).get(str(self.row),[])
@@ -403,6 +378,10 @@ class MealCell(QFrame):
             old=self.food_list.item(i).text(); n=old.split(". ",1)[1] if ". " in old else old
             self.food_list.item(i).setText(f"{i+1}. {n}")
         self.parent_page.update_mood()
+        self.parent_page.meal_data_changed.emit(
+            self.date_key,
+            self.parent_page.meal_data[self.date_key]
+        )
 
     def _delete_by_name(self, food_name):
         """Delete from the data and the list widget by name."""
@@ -422,6 +401,10 @@ class MealCell(QFrame):
             n = old.split(". ", 1)[1] if ". " in old else old
             self.food_list.item(i).setText(f"{i+1}. {n}")
         self.parent_page.update_mood()
+        self.parent_page.meal_data_changed.emit(
+            self.date_key,
+            self.parent_page.meal_data[self.date_key]
+        )
 
     def show_cell_popup(self, item):
         """Click an item to open a popup showing all food items in this section."""
@@ -477,6 +460,9 @@ class ClickableHeader(QHeaderView):
             painter.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
             painter.restore()
 
+    def show_detail(self, item):
+        DetailPopup(item.text().split(". ",1)[1]).exec()
+
 
 #MealLabelCell
 class MealLabelCell(QWidget):
@@ -494,8 +480,13 @@ class MealLabelCell(QWidget):
 
 #MealPlannerPage
 class MealPlannerPage(QWidget):
+    meal_data_changed = Signal(str, object) 
+    jump_to_week_day = Signal(str)
+    day_selected = Signal(str)
+    date_picked = Signal(str)
+
     go_to_mood  = Signal()
-    go_to_daily = Signal(QDate)
+    go_to_daily = Signal(str) 
 
     def __init__(self):
         super().__init__()
@@ -548,7 +539,7 @@ class MealPlannerPage(QWidget):
             "QPushButton{background:transparent;border:none;border-radius:24px;}"
             "QPushButton:hover{background:rgba(168,187,150,0.25);}"
         )
-        self.mood_label.clicked.connect(self.go_to_mood.emit)
+        self.mood_label.clicked.connect(self._handle_mood_click)
         hdr.addWidget(self.mood_label)
         main_layout.addLayout(hdr)
 
@@ -595,8 +586,8 @@ class MealPlannerPage(QWidget):
         if col_index == 0: return
         dks = self.get_week_date_keys()
         date_str = dks[col_index - 1]
-        dt = datetime.strptime(date_str, "%Y-%m-%d")
-        self.go_to_daily.emit(QDate(dt.year, dt.month, dt.day))
+        self.go_to_daily.emit(date_str)
+        self.jump_to_week_day.emit(date_str)
 
     def open_calendar(self):
         cal=CalendarDialog(self.current_date,self)
@@ -604,8 +595,14 @@ class MealPlannerPage(QWidget):
         pos=self.week_btn.mapToGlobal(self.week_btn.rect().bottomLeft())
         cal.move(pos.x(),pos.y()+4); cal.exec()
 
-    def _on_date_picked(self,dt):
-        self.current_date=dt; self.update_week()
+    def _on_date_picked(self, dt):
+        self.current_date = dt
+        self.update_week()
+
+        date_str = dt.strftime("%Y-%m-%d")
+
+        self.select_day(date_str)
+        self.date_picked.emit(date_str)
 
     def get_start_of_week(self,date):
         return date - timedelta(days=(date.weekday()+1)%7)
@@ -613,6 +610,10 @@ class MealPlannerPage(QWidget):
     def get_week_date_keys(self):
         start=self.get_start_of_week(self.current_date)
         return [(start+timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
+    
+    def _handle_mood_click(self):
+        date_str = self.current_date.strftime("%Y-%m-%d")
+        self.jump_to_week_day.emit(date_str)
 
     def update_week(self):
         start=self.get_start_of_week(self.current_date)
