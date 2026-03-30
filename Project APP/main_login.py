@@ -17,7 +17,7 @@ from main_input import MainWindow_input
 # Get the base directory
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FONTS_DIR = os.path.join(BASE_DIR, 'fonts')
-ICONS_DIR = os.path.join(BASE_DIR, 'icons')
+ICONS_DIR = os.path.join(BASE_DIR, 'Icon')
 
 
 # ==================== COLOR PALETTE ====================
@@ -147,6 +147,11 @@ class IconLineEdit(QFrame):
 
         self.icon_label = QLabel()
         icon_path = os.path.join(ICONS_DIR, f"{self.icon_name}.png")
+
+        print(f"[DEBUG] ICONS_DIR = {ICONS_DIR}")
+        print(f"[DEBUG] icon_path = {icon_path}")
+        print(f"[DEBUG] exists = {os.path.exists(icon_path)}")
+
         if os.path.exists(icon_path):
             pixmap = QPixmap(icon_path)
             self.icon_label.setPixmap(pixmap.scaled(20, 20, Qt.KeepAspectRatio, Qt.SmoothTransformation))
@@ -203,7 +208,6 @@ class IconLineEdit(QFrame):
 
     def setText(self, text):
         self.line_edit.setText(text)
-
 
 class PrimaryButton(QPushButton):
     def __init__(self, text="", parent=None):
@@ -844,6 +848,21 @@ class LoginWindow(QMainWindow):
 
         if password != confirm_password:
             QMessageBox.warning(self, "Sign Up Failed", "Passwords do not match.")
+            return
+        
+        # ── Validate password rules ──
+        import re
+        errors = []
+        if len(password) < 8:
+            errors.append("At least 8 characters required.")
+        if not re.search(r'[A-Z]', password):
+            errors.append("Must contain at least one uppercase letter (A-Z).")
+        if not re.search(r'[a-z]', password):
+            errors.append("Must contain at least one lowercase letter (a-z).")
+        if not re.search(r'\d', password):
+            errors.append("Must contain at least one number (0-9).")
+        if errors:
+            QMessageBox.warning(self, "Sign Up Failed", "\n".join(errors))
             return
 
         ok, msg = register_user(username, password)

@@ -72,15 +72,23 @@ class UserDatabase:
             return False, "Username is already taken."
         if self.email_exists(email):
             return False, "An account with this email already exists."
+        
+        from login2 import Validator
+        p_errs = Validator.validate_password(password)
+        if p_errs:
+            return False, p_errs[0]
+    
         salt = os.urandom(16).hex()
+        pw_hash = self._hash(password, salt)
         self._users[key] = {
             "username": username,
             "email": email,
-            "password_hash": self._hash(password, salt),
+            "password_hash": pw_hash,
             "salt": salt,
             "created_at": time.time(),
             "failed_attempts": 0,
             "locked_until": 0.0,
+            "password_history": [pw_hash],
         }
         self._save()
         return True, "Account created successfully!"
@@ -111,7 +119,17 @@ class UserDatabase:
         user = self.find_by_username_or_email(username_or_email)
         if not user:
             return False, "No account found."
+        
+        history = user.get("password_history", [])
+        for entry in history:
+            if self._hash(new_password, entry["salt"]) == entry["hash"]:
+                return False, "Cannot reuse a previous password."
+        
         salt = os.urandom(16).hex()
+        new_hash = self._hash(new_password, salt)
+
+        history.append({"hash": new_hash, "salt": salt})
+        user["password_history"] = history[-5:]
         user['password_hash'] = self._hash(new_password, salt)
         user['salt'] = salt
         user['failed_attempts'] = 0
