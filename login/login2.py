@@ -145,33 +145,43 @@ class Validator:
             return ["Enter a valid email address (e.g. name@example.com)."]
         return []
 
+    PASSWORD_RE = re.compile(r'^[a-zA-Z0-9]+$')
+
     @classmethod
     def password_checks(cls, password):
         return {
-            "min_length": len(password) >= cls.PASSWORD_MIN,
-            "uppercase":  bool(re.search(r'[A-Z]', password)),
-            "lowercase":  bool(re.search(r'[a-z]', password)),
-            "digit":      bool(re.search(r'\d', password)),
-            "special":    bool(re.search(r'[!@#$%^&*()\-_=+\[\]{};:\'",.<>/?\\|`~]', password)),
+            "min_length":    len(password) >= cls.PASSWORD_MIN,
+            "valid_chars":   bool(cls.PASSWORD_RE.match(password)) if password else False,
+            "uppercase":     bool(re.search(r'[A-Z]', password)),
+            "lowercase":     bool(re.search(r'[a-z]', password)),
+            "digit":         bool(re.search(r'\d', password)),
         }
 
     @classmethod
     def password_strength(cls, password):
-        score = sum(cls.password_checks(password).values())
-        labels = {1: "Weak", 2: "Fair", 3: "Good", 4: "Strong", 5: "Very Strong"}
+        checks = cls.password_checks(password)
+        # ถ้ามีอักขระที่ไม่อนุญาต ให้ strength = 0
+        if not checks.get("valid_chars", False):
+            return 0, "Invalid"
+        score = sum([checks["min_length"], checks["uppercase"], checks["lowercase"], checks["digit"]])
+        labels = {1: "Weak", 2: "Fair", 3: "Good", 4: "Strong"}
         return min(score, 4), labels.get(score, "Strong")
 
     @classmethod
     def validate_password(cls, password):
         checks = cls.password_checks(password)
-        rules = {
-            "min_length": f"At least {cls.PASSWORD_MIN} characters",
-            "uppercase":  "At least one uppercase letter (A-Z)",
-            "lowercase":  "At least one lowercase letter (a-z)",
-            "digit":      "At least one number (0-9)",
-            "special":    "At least one special character (!@#$%...)",
-        }
-        return [msg for key, msg in rules.items() if not checks[key]]
+        errors = []
+        if not checks["min_length"]:
+            errors.append(f"At least {cls.PASSWORD_MIN} characters")
+        if password and not checks["valid_chars"]:
+            errors.append("Only letters (A-Z, a-z) and numbers (0-9) are allowed.")
+        if not checks["uppercase"]:
+            errors.append("At least one uppercase letter (A-Z)")
+        if not checks["lowercase"]:
+            errors.append("At least one lowercase letter (a-z)")
+        if not checks["digit"]:
+            errors.append("At least one number (0-9)")
+        return errors
 
 
 # ==================== COLORS ====================
