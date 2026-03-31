@@ -124,9 +124,6 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(ss.mainwindow)
         self._syncing = False
         self.meal_data = load_meal_data(Session.user_id) or {}
-        from Database_sor import clear_all_meals
-        clear_all_meals(Session.user_id)
-        self.meal_data = {}
         self.result_page = ResultPage()
 
         root = QWidget()
@@ -376,17 +373,15 @@ class MainWindow(QMainWindow):
         self.meal_planner.select_day(date_str)
 
     def handle_dashboard_meal_added(self, date, food):
+        import traceback
+        traceback.print_stack(limit=5) 
         if self._syncing:
             return
         self._syncing = True
         try:
             meal_name = food.get("meal", "Lunch")
-            # Prevent duplicate: check if food already in list by identity
-            existing = self.meal_data.setdefault(date, {}).setdefault(meal_name, [])
-            # Avoid double-append: dashboard emits meal_added which calls this,
-            # but daily_page.meal_data_changed should NOT re-trigger for the same item.
-            existing.append(food)
-            print(f"[DEBUG] {meal_name} now has {len(existing)} items")
+            self.meal_data.setdefault(date, {}).setdefault(meal_name, []).append(food)
+            print(f"[DEBUG] {meal_name} now has {len(self.meal_data[date][meal_name])} items")
 
             self.meal_planner.meal_data = self.meal_data
             self.meal_planner.update_week()

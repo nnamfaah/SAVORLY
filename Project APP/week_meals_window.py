@@ -222,27 +222,66 @@ class FoodList(QListWidget):
     def __init__(self, meal_cell=None):
         super().__init__()
         self.meal_cell = meal_cell
-        self.setDragEnabled(True); self.setAcceptDrops(True)
+        self.setDragDropMode(QListWidget.DragDrop)
         self.setDefaultDropAction(Qt.CopyAction)
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.viewport().setAcceptDrops(True)
 
     def startDrag(self, actions):
         item = self.currentItem()
-        if item:
-            d = QDrag(self); m = QMimeData(); m.setText(item.text())
-            d.setMimeData(m); d.exec(Qt.CopyAction)
+        if not item:
+            return
+        # ส่งเฉพาะชื่ออาหาร (ตัด "1. " prefix ออก)
+        raw = item.text()
+        food_name = raw.split(". ", 1)[1] if ". " in raw else raw
+        mime = QMimeData()
+        mime.setText(food_name)
+        drag = QDrag(self)
+        drag.setMimeData(mime)
+        from PySide6.QtGui import QPixmap, QPainter as _P, QColor as _C, QFont as _F
+        w = max(len(food_name) * 7, 80)
+        px = QPixmap(w, 22)
+        px.fill(_C(0, 0, 0, 0))
+        p = _P(px)
+        p.setPen(_C("#2d3a2e"))
+        p.setFont(_F("Segoe UI", 9))
+        p.drawText(px.rect(), Qt.AlignCenter, food_name)
+        p.end()
+        drag.setPixmap(px)
+        drag.setHotSpot(px.rect().center())
+        drag.exec(Qt.CopyAction)
 
-    def dragEnterEvent(self, e): e.accept()
-    def dragMoveEvent(self, e): e.accept()
+    def dragEnterEvent(self, e):
+        if e.mimeData().hasText():
+            e.acceptProposedAction()
+        else:
+            e.ignore()
+
+    def dragMoveEvent(self, e):
+        if e.mimeData().hasText():
+            e.acceptProposedAction()
+        else:
+            e.ignore()
 
     def dropEvent(self, e):
-        text = e.mimeData().text()
-        food = text.split(". ", 1)[1] if ". " in text else text
+        if not e.mimeData().hasText() or e.source() is self:
+            e.ignore()
+            return
+        food = e.mimeData().text().strip()
+        if not food:
+            e.ignore()
+            return
         self.addItem(f"{self.count()+1}. {food}")
-        e.accept()
+        e.acceptProposedAction()
         if self.meal_cell:
             mc = self.meal_cell
             mc.parent_page.meal_data.setdefault(mc.date_key, {}).setdefault(mc.meal_name, []).append(food)
             mc.parent_page.update_mood()
+            mc.parent_page.meal_data_changed.emit(
+                mc.date_key,
+                mc.parent_page.meal_data.get(mc.date_key, {})
+            )
 
 
 #MealCell
@@ -284,7 +323,15 @@ class MealCell(QFrame):
 
     def _load_existing(self):
         for food in self._get_foods():
-            self.food_list.addItem(f"{self.food_list.count()+1}. {food}")
+            if isinstance(food, dict):
+                name = food.get("name") or food.get("food_name") or food.get("text")
+                if not name:
+                    continue
+            elif isinstance(food, str):
+                name = food
+            else:
+                continue
+            self.food_list.addItem(f"{self.food_list.count()+1}. {str(name).strip()}")
     def add_food(self):
         dialog = QDialog()        
         dialog.setWindowTitle("Add Food")
@@ -353,6 +400,10 @@ class MealCell(QFrame):
                 self.parent_page.meal_data.setdefault(self.date_key, {}) \
                     .setdefault(self.meal_name, []).append(text)
                 self.parent_page.update_mood()
+                self.parent_page.meal_data_changed.emit(
+                    self.date_key,
+                    self.parent_page.meal_data.get(self.date_key, {})
+                )
                 dialog.accept()
 
         ok_btn.clicked.connect(on_ok)
@@ -360,12 +411,17 @@ class MealCell(QFrame):
         dialog.exec_()
     
     def delete_food(self, item):
-        name=item.text().split(". ",1)[1]
+        name = item.text().split(". ", 1)[1] if ". " in item.text() else item.text()
         foods = self.parent_page.meal_data.get(self.date_key, {}).get(self.meal_name, [])
-        if name in foods: foods.remove(name)
+        for i, f in enumerate(foods):
+            f_name = f.get("name", "") if isinstance(f, dict) else str(f)
+            if f_name == name:
+                foods.pop(i)
+                break
         self.food_list.takeItem(self.food_list.row(item))
         for i in range(self.food_list.count()):
-            old=self.food_list.item(i).text(); n=old.split(". ",1)[1] if ". " in old else old
+            old = self.food_list.item(i).text()
+            n = old.split(". ", 1)[1] if ". " in old else old
             self.food_list.item(i).setText(f"{i+1}. {n}")
         self.parent_page.update_mood()
         self.parent_page.meal_data_changed.emit(
@@ -566,6 +622,12 @@ class MealPlannerPage(QWidget):
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setSectionResizeMode(QHeaderView.Stretch)
         main_layout.addWidget(self.table, stretch=1)
+
+        # เปิด drag-drop บน table ให้ drop event ผ่านลงไปถึง MealCell/FoodList
+        self.table.setAcceptDrops(True)
+        self.table.viewport().setAcceptDrops(True)
+        self.table.setDragDropMode(QTableWidget.DragDrop)
+
         self.update_week()
 
     def _on_header_clicked(self, col_index):

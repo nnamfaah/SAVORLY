@@ -96,25 +96,58 @@ class DetailPopup(QDialog):
 class FoodList(QListWidget):
     def __init__(self, meal_cell=None):
         super().__init__()
-        self.meal_cell = meal_cell  # ref กลับ MealCell เพื่อบันทึก meal_data
-        self.setDragEnabled(True); self.setAcceptDrops(True)
+        self.meal_cell = meal_cell
+        self.setDragDropMode(QListWidget.DragDrop)
         self.setDefaultDropAction(Qt.CopyAction)
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.viewport().setAcceptDrops(True)
 
     def startDrag(self, actions):
         item = self.currentItem()
-        if item:
-            d = QDrag(self); m = QMimeData(); m.setText(item.text())
-            d.setMimeData(m); d.exec(Qt.CopyAction)
+        if not item:
+            return
+        raw = item.text()
+        food_name = raw.split(". ", 1)[1] if ". " in raw else raw
+        mime = QMimeData()
+        mime.setText(food_name)
+        drag = QDrag(self)
+        drag.setMimeData(mime)
+        from PySide6.QtGui import QPixmap, QPainter as _P, QColor as _C, QFont as _F
+        w = max(len(food_name) * 7, 80)
+        px = QPixmap(w, 22)
+        px.fill(_C(0, 0, 0, 0))
+        p = _P(px)
+        p.setPen(_C("#2d3a2e"))
+        p.setFont(_F("Segoe UI", 9))
+        p.drawText(px.rect(), Qt.AlignCenter, food_name)
+        p.end()
+        drag.setPixmap(px)
+        drag.setHotSpot(px.rect().center())
+        drag.exec(Qt.CopyAction)
 
-    def dragEnterEvent(self, e): e.accept()
-    def dragMoveEvent(self, e): e.accept()
+    def dragEnterEvent(self, e):
+        if e.mimeData().hasText():
+            e.acceptProposedAction()
+        else:
+            e.ignore()
+
+    def dragMoveEvent(self, e):
+        if e.mimeData().hasText():
+            e.acceptProposedAction()
+        else:
+            e.ignore()
 
     def dropEvent(self, e):
-        text = e.mimeData().text()
-        food = text.split(". ", 1)[1] if ". " in text else text
+        if not e.mimeData().hasText() or e.source() is self:
+            e.ignore()
+            return
+        food = e.mimeData().text().strip()
+        if not food:
+            e.ignore()
+            return
         self.addItem(f"{self.count()+1}. {food}")
-        e.accept()
-        # บันทึกลง meal_data และ emit signal ให้ MainWindow save/sync
+        e.acceptProposedAction()
         if self.meal_cell:
             mc = self.meal_cell
             mc.parent_page.meal_data.setdefault(mc.date_key, {}).setdefault(mc.meal_name, []).append(food)
@@ -141,34 +174,52 @@ class MealCell(QFrame):
         self._load_existing()
 
     def _load_existing(self):
+        _MACRO_KEYS = {"protein", "carbs", "fat", "vitamins", "minerals", "mineral",
+                       "date", "meal", "quantity"}  # keys ที่ไม่ใช่ชื่ออาหาร
         for food in self.parent_page.meal_data.get(self.date_key, {}).get(self.meal_name, []):
+            name = None
             if isinstance(food, dict):
-                name = food.get("name", str(food))
-            else:
-                name = str(food)
-            self.food_list.addItem(f"{self.food_list.count()+1}. {name}")
+                # food dict จาก dashboard มี "name" key เสมอ
+                name = food.get("name") or food.get("food_name") or food.get("text")
+            elif isinstance(food, str):
+                name = food
+            if name:
+                self.food_list.addItem(f"{self.food_list.count()+1}. {str(name).strip()}")
         
     def add_food(self):
-        text,ok=QInputDialog.getText(self,"Add Food","Food name:")
+        text, ok = QInputDialog.getText(self, "Add Food", "Food name:")
         if ok and text.strip():
             self.food_list.addItem(f"{self.food_list.count()+1}. {text.strip()}")
-            self.parent_page.meal_data.setdefault(self.date_key,{}).setdefault(self.meal_name,[]).append(text.strip())
+            self.parent_page.meal_data.setdefault(self.date_key, {}).setdefault(self.meal_name, []).append(text.strip())
             self.parent_page.update_mood()
+            self.parent_page.meal_data_changed.emit(
+                self.date_key,
+                self.parent_page.meal_data.get(self.date_key, {})
+            )
             # Emit so MainWindow can save & sync daily page
             self.parent_page.meal_data_changed.emit(
                 self.date_key,
                 self.parent_page.meal_data.get(self.date_key, {})
             )
     
-    def delete_food(self,item):
-        name=item.text().split(". ",1)[1]
-        foods=self.parent_page.meal_data.get(self.date_key,{}).get(self.meal_name,[])
-        if name in foods: foods.remove(name)
+    def delete_food(self, item):
+        name = item.text().split(". ", 1)[1] if ". " in item.text() else item.text()
+        foods = self.parent_page.meal_data.get(self.date_key, {}).get(self.meal_name, [])
+        for i, f in enumerate(foods):
+            f_name = f.get("name", "") if isinstance(f, dict) else str(f)
+            if f_name == name:
+                foods.pop(i)
+                break
         self.food_list.takeItem(self.food_list.row(item))
         for i in range(self.food_list.count()):
-            old=self.food_list.item(i).text(); n=old.split(". ",1)[1] if ". " in old else old
+            old = self.food_list.item(i).text()
+            n = old.split(". ", 1)[1] if ". " in old else old
             self.food_list.item(i).setText(f"{i+1}. {n}")
         self.parent_page.update_mood()
+        self.parent_page.meal_data_changed.emit(
+            self.date_key,
+            self.parent_page.meal_data.get(self.date_key, {})
+        )
     
     def show_detail(self,item):
         DetailPopup(item.text().split(". ",1)[1]).exec()
@@ -267,6 +318,12 @@ class MealPlannerPage(QWidget):
         self.table.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
 
         main_layout.addWidget(self.table, stretch=1)
+
+        # เปิด drag-drop บน table ให้ drop event ผ่านลงไปถึง MealCell/FoodList
+        self.table.setAcceptDrops(True)
+        self.table.viewport().setAcceptDrops(True)
+        self.table.setDragDropMode(QTableWidget.DragDrop)
+
         self.update_week()
 
  
