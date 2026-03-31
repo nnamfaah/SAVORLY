@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtGui import QFont
 
 from main_login import LoginWindow
-from Database_sor import init_database, run_migrations
+from Database_sor import init_database, run_migrations, ensure_meals_unique, fix_db_on_startup
 import stylesheet as ss 
 
 def main():
@@ -23,6 +23,19 @@ def main():
             print("✅ Migrations done")
         except Exception as e:
             print("⚠️ Migration skipped:", e)
+
+        try: 
+            fix_db_on_startup()
+            print("✅ Fix_database done")
+
+        except Exception as e:
+            print("⚠️ Fix_database skipped", e)
+
+        try:
+            ensure_meals_unique()
+            print("✅ ensure_meal done")
+        except Exception as e:
+            print("⚠️ Ensure_meal skipped", e)
 
         app = QApplication(sys.argv)
         app.setFont(QFont("Inria Serif", 10))

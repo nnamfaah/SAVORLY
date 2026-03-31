@@ -180,7 +180,6 @@ class MainWindow(QMainWindow):
         today = QDate.currentDate().toString("yyyy-MM-dd")
         self.daily_page.sync_from_main(today, self.meal_data.get(today, {}))
         self.weekly_page._weekly_meal.meal_data = self.meal_data
-        today = QDate.currentDate().toString("yyyy-MM-dd")
         self.daily_page.sync_from_main(today, self.meal_data)
 
         # self.dashboard_page.meal_added.connect(self.handle_meal_data_change)
