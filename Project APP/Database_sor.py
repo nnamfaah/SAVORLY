@@ -435,8 +435,6 @@ def get_food_history(limit=10):
 def save_meal_data(user_id, date, meals_for_day,
                    meal_type='general', food=''):
 
-    ensure_meals_unique()
-
     meals_json = json.dumps(meals_for_day or {})
 
     conn = connect()
@@ -493,7 +491,12 @@ def remove_duplicate_meals():
 
     conn.commit()
     conn.close()
-
+def clear_all_meals(user_id):
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM meals WHERE user_id=?", (user_id,))
+    conn.commit()
+    conn.close()
 
 # ───────────────────────────────
 # AI RECOMMENDATIONS

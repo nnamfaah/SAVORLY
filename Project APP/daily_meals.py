@@ -411,5 +411,3 @@ class DailyMealsSubPage(QWidget):
         tdee = getattr(self, "_tdee_target", 2000)  # fallback to 2000 if not set
         if hasattr(self, "update_calorie_visual"):
             self.update_calorie_visual(total_calories, tdee)
-        if hasattr(self, "update_tdee"):
-            self.update_tdee(tdee)

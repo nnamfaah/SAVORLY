@@ -122,7 +122,11 @@ class MainWindow(QMainWindow):
         self.resize(1200, 780)
         self.setMinimumSize(960, 640)
         self.setStyleSheet(ss.mainwindow)
+        self._syncing = False
         self.meal_data = load_meal_data(Session.user_id) or {}
+        from Database_sor import clear_all_meals
+        clear_all_meals(Session.user_id)
+        self.meal_data = {}
         self.result_page = ResultPage()
 
         root = QWidget()
@@ -181,8 +185,6 @@ class MainWindow(QMainWindow):
         self.dashboard_page.meal_added.connect(self.handle_dashboard_meal_added)
 
         # โหลด DB ครั้งเดียว แล้ว sync ทุก page
-        saved_data = load_meal_data(Session.user_id) or {}
-        self.meal_data = saved_data
         self.meal_planner.meal_data = self.meal_data
         self.weekly_page._weekly_meal.meal_data = self.meal_data
         self.meal_planner.update_week()
@@ -196,6 +198,7 @@ class MainWindow(QMainWindow):
         self.result_page.data_confirmed.connect(self.save_results)
         self.result_page.cancelled.connect(lambda: self._stack.setCurrentWidget(self.settings_page))
         self.settings_page.tdee_updated.connect(self.dashboard_page.update_tdee)
+        self.settings_page.tdee_updated.connect(self.daily_page.update_tdee)
         self._stack.addWidget(self.settings_page)
         self._stack.addWidget(self.result_page)
 
@@ -272,44 +275,37 @@ class MainWindow(QMainWindow):
         )
         print("Saved for user:", user_id)
         self.dashboard_page.update_tdee(tdee)
+        self.daily_page.update_tdee(tdee)
         self._stack.setCurrentWidget(self.dashboard_page)
 
     def handle_meal_data_change(self, date, meals_for_day):
-        """
-        CENTRAL SYNC CONTROLLER
-        Syncs meal data across Dashboard, Daily page, Weekly page, and Meal Planner.
-        """
-        print(f"[DEBUG] handle_meal_data_change called: date={date}")
-        
-        # --- 1️⃣ Update central meal_data ---
-        self.meal_data[date] = meals_for_day
+        if self._syncing:
+            return
+        self._syncing = True
+        try:
+            print(f"[DEBUG] handle_meal_data_change called: date={date}")
 
-        # --- 2️⃣ Sync Meal Planner and Weekly page ---
-        self.meal_planner.meal_data = self.meal_data
-        self.meal_planner.update_week()
-        if hasattr(self.weekly_page, "set_meal_data"):
-            self.weekly_page.set_meal_data(self.meal_data)
+            self.meal_data[date] = meals_for_day
 
-        # --- 3️⃣ อัปเดต meal_data ของ daily_page และ weekly page ตลอดเวลา ---
-        self.daily_page.meal_data = self.meal_data
-        if hasattr(self.daily_page, "_current_date"):
-            current_date_str = self.daily_page._current_date.toString("yyyy-MM-dd")
-            if current_date_str == date:
-                self.daily_page._refresh()
+            self.meal_planner.meal_data = self.meal_data
+            self.meal_planner.update_week()
+            if hasattr(self.weekly_page, "set_meal_data"):
+                self.weekly_page.set_meal_data(self.meal_data)
 
-        # --- 3b. Sync daily_page ใน weekly_page ด้วย ---
-        if hasattr(self.weekly_page, "_daily_page"):
-            wp_daily = self.weekly_page._daily_page
-            wp_daily.meal_data = self.meal_data
-            if hasattr(wp_daily, "_current_date"):
-                wp_date = wp_daily._current_date.toString("yyyy-MM-dd")
-                if wp_date == date:
-                    wp_daily._refresh()
+            self.daily_page.meal_data = self.meal_data
 
-        # --- 4️⃣ Build meal profiles and compute total calories ---
-        meal_profiles = []
-        for meals in self.meal_data.values():
-            for food_list in meals.values():
+            if hasattr(self.weekly_page, "_daily_page"):
+                wp_daily = self.weekly_page._daily_page
+                wp_daily.meal_data = self.meal_data
+                if hasattr(wp_daily, "_current_date"):
+                    wp_date = wp_daily._current_date.toString("yyyy-MM-dd")
+                    if wp_date == date:
+                        wp_daily._refresh()
+
+            today = QDate.currentDate().toString("yyyy-MM-dd")
+            today_meals = self.meal_data.get(today, {})
+            meal_profiles = []
+            for food_list in today_meals.values():
                 for food in food_list:
                     if isinstance(food, dict):
                         meal_profiles.append(food)
@@ -317,32 +313,28 @@ class MainWindow(QMainWindow):
                         profile = FOOD_DATABASE.get(food, {})
                         meal_profiles.append({"profile": profile, "quantity": 1})
 
-        total_calories = 0
-        for item in meal_profiles:
-            profile = item.get("profile", {})
-            qty = item.get("quantity", 1)
-            total_calories += (profile.get("protein",0)*4 + profile.get("carbs",0)*4 + profile.get("fat",0)*9) * qty
+            total_calories = 0
+            for item in meal_profiles:
+                macros = item.get("macros") or item.get("profile") or {}
+                qty = item.get("quantity", 1)
+                total_calories += (macros.get("protein", 0)*4 + macros.get("carbs", 0)*4 + macros.get("fat", 0)*9) * qty
 
-        # --- 5️⃣ Get user TDEE ---
-        from Database_sor import get_user_profile
-        user = get_user_profile(Session.user_id)
-        tdee = user[6] if user and len(user) > 6 else 2000
+            from Database_sor import get_user_profile
+            user = get_user_profile(Session.user_id)
+            tdee = user[6] if user and len(user) > 6 else 2000
 
-        # --- 6️⃣ Update Dashboard page ---
-        self.dashboard_page.update_calorie_visual(total_calories, tdee)
-        self.dashboard_page.update_from_meals(meal_profiles)
-        self.dashboard_page.update_tdee(tdee)
+            self.dashboard_page.update_calorie_visual(total_calories, tdee)
+            self.dashboard_page.update_from_meals(meal_profiles)
+            self.dashboard_page.update_tdee(tdee)
 
-        # --- 7️⃣ Update Daily page ---
-        if hasattr(self.daily_page, "set_meals"):
-            self.daily_page.set_meals(self.meal_data.get(date, {}), date_str=date)
-            self.daily_page.update_calorie_visual(total_calories, tdee)
-            self.daily_page.update_tdee(tdee)
-            if hasattr(self.daily_page, "update_from_meals"):
-                self.daily_page.update_from_meals(meal_profiles)
+            current = self.daily_page._current_date.toString("yyyy-MM-dd")
+            if current == date:
+                self.daily_page._refresh()
 
-        # --- 8️⃣ Save meals to database ---
-        save_meal_data(Session.user_id, date, meals_for_day)
+            save_meal_data(Session.user_id, date, meals_for_day)
+
+        finally:
+            self._syncing = False
 
     def handle_jump_to_week(self, date_str):
         self._stack.setCurrentWidget(self.weekly_page)
@@ -356,7 +348,8 @@ class MainWindow(QMainWindow):
         self.daily_page._current_date = QDate.fromString(date_str, "yyyy-MM-dd")
 
         # Set meals for that date and refresh UI
-        self.daily_page.set_meals(self.meal_data.get(date_str, {}), date_str=date_str)
+        self.daily_page._current_date = QDate.fromString(date_str, "yyyy-MM-dd")
+        self.daily_page._refresh()
 
 
     def open_weekly_detail(self, date_str):
@@ -383,57 +376,25 @@ class MainWindow(QMainWindow):
         self.meal_planner.select_day(date_str)
 
     def handle_dashboard_meal_added(self, date, food):
-        """Inject food added from Dashboard into central meal_data."""
-        print(f"[DEBUG] handle_dashboard_meal_added called: date={date}, food={food}")
-        meal_name = food.get("meal", "Lunch")
-
-        # Add food to central meal_data ใช้ชื่อ meal เป็น key ตรงๆ
-        self.meal_data.setdefault(date, {})
-        self.meal_data[date].setdefault(meal_name, [])
-        self.meal_data[date][meal_name].append(food)
-
-        # Sync ทุก page พร้อมกัน
-        self.handle_meal_data_change(date, self.meal_data[date])
-
-    def save_results(self, bmi, tdee):
-        from Database_sor import save_user_profile, get_user_profile
-        user_id = Session.user_id
-        user = get_user_profile(user_id)
-        if not user:
+        import traceback
+        traceback.print_stack(limit=5) 
+        if self._syncing:
             return
-    
-        age, gender, height, weight, *_ = user
-        if str(gender).lower() == "male":
-            bmr = 10 * float(weight) + 6.25 * float(height) - 5 * int(age) + 5
-        else:
-            bmr = 10 * float(weight) + 6.25 * float(height) - 5 * int(age) - 161
+        self._syncing = True
+        try:
+            meal_name = food.get("meal", "Lunch")
+            self.meal_data.setdefault(date, {}).setdefault(meal_name, []).append(food)
+            print(f"[DEBUG] {meal_name} now has {len(self.meal_data[date][meal_name])} items")
 
-        save_user_profile(
-            user_id,
-            age,
-            gender,
-            height,
-            weight,
-            bmi,
-            bmr,
-            tdee
-        )
-        print("Saved for user:", user_id)
+            self.meal_planner.meal_data = self.meal_data
+            self.meal_planner.update_week()
 
-    # Calculate total calories for today
-        today = QDate.currentDate().toString("yyyy-MM-dd")
-        meals_for_today = self.meal_data.get(today, {})
-        total_calories = 0
-        from food_database import FOOD_DATABASE
-        for food_list in meals_for_today.values():
-            for food in food_list:
-                profile = food.get("profile", {}) if isinstance(food, dict) else FOOD_DATABASE.get(food, {})
-                qty = food.get("quantity", 1) if isinstance(food, dict) else 1
-                total_calories += (profile.get("protein",0)*4 + profile.get("carbs",0)*4 + profile.get("fat",0)*9) * qty
+            today = QDate.currentDate().toString("yyyy-MM-dd")
+            if date == today:
+                self.daily_page.meal_data = self.meal_data
+                self.daily_page._refresh()
 
-        self.dashboard_page.update_tdee(tdee)
-        if hasattr(self, "daily_page"):
-            self.daily_page.update_calorie_visual(total_calories, tdee)
-            self.daily_page.update_tdee(tdee)
+            save_meal_data(Session.user_id, date, self.meal_data[date])
 
-        self._stack.setCurrentWidget(self.dashboard_page)
+        finally:
+            self._syncing = False

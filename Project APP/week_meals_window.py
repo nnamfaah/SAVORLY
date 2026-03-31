@@ -241,7 +241,7 @@ class FoodList(QListWidget):
         e.accept()
         if self.meal_cell:
             mc = self.meal_cell
-            mc.parent_page.meal_data.setdefault(mc.date_key, {}).setdefault(str(mc.row), []).append(food)
+            mc.parent_page.meal_data.setdefault(mc.date_key, {}).setdefault(mc.meal_name, []).append(food)
             mc.parent_page.update_mood()
 
 
@@ -280,7 +280,7 @@ class MealCell(QFrame):
             p.end()
 
     def _get_foods(self):
-        return list(self.parent_page.meal_data.get(self.date_key, {}).get(str(self.row), []))
+        return list(self.parent_page.meal_data.get(self.date_key, {}).get(self.meal_name, []))
 
     def _load_existing(self):
         for food in self._get_foods():
@@ -293,11 +293,6 @@ class MealCell(QFrame):
         label = QLabel("Food name:")
         input_field = QLineEdit()
         input_field.setPlaceholderText("Enter food name")
-        self.parent_page.meal_data.setdefault(self.date_key, {})
-        self.parent_page.meal_data_changed.emit(
-            self.date_key,
-            self.parent_page.meal_data.get(self.date_key, {})
-        )
 
         ok_btn = QPushButton("OK")
         cancel_btn = QPushButton("Cancel")
@@ -356,7 +351,7 @@ class MealCell(QFrame):
             if text:
                 self.food_list.addItem(f"{self.food_list.count()+1}. {text}")
                 self.parent_page.meal_data.setdefault(self.date_key, {}) \
-                    .setdefault(str(self.row), []).append(text)
+                    .setdefault(self.meal_name, []).append(text)
                 self.parent_page.update_mood()
                 dialog.accept()
 
@@ -366,7 +361,7 @@ class MealCell(QFrame):
     
     def delete_food(self, item):
         name=item.text().split(". ",1)[1]
-        foods=self.parent_page.meal_data.get(self.date_key,{}).get(str(self.row),[])
+        foods = self.parent_page.meal_data.get(self.date_key, {}).get(self.meal_name, [])
         if name in foods: foods.remove(name)
         self.food_list.takeItem(self.food_list.row(item))
         for i in range(self.food_list.count()):
@@ -380,7 +375,7 @@ class MealCell(QFrame):
 
     def _delete_by_name(self, food_name):
         """Delete from the data and the list widget by name."""
-        foods = self.parent_page.meal_data.get(self.date_key, {}).get(str(self.row), [])
+        foods = self.parent_page.meal_data.get(self.date_key, {}).get(self.meal_name, [])
         if food_name in foods:
             foods.remove(food_name)
         # ลบออกจาก QListWidget
@@ -638,14 +633,13 @@ class MealPlannerPage(QWidget):
 
     def calculate_mood(self):
         dks=self.get_week_date_keys()
-        snack_row=self.meal_types.index("Snack")
         snack_count=0; breakfast_skipped=False; balanced=0
         for dk in dks:
             d=self.meal_data.get(dk,{})
-            b=bool(d.get(str(self.meal_types.index("Breakfast"))))
-            l=bool(d.get(str(self.meal_types.index("Lunch"))))
-            dn=bool(d.get(str(self.meal_types.index("Dinner"))))
-            snack_count+=len(d.get(str(snack_row),[]))
+            b=bool(d.get("Breakfast"))
+            l=bool(d.get("Lunch"))
+            dn=bool(d.get("Dinner"))
+            snack_count+=len(d.get("Snack",[]))
             if not b: breakfast_skipped=True
             if b and l and dn: balanced+=1
         if snack_count>5: return "stress"
@@ -656,16 +650,6 @@ class MealPlannerPage(QWidget):
     def update_mood(self):
         emoji = {"excellent":"😍","normal":"😊","low":"☺️","stress":"😃"}.get(self.calculate_mood(),"😊")
         self.mood_label.setText(emoji)
-
-    def select_day(self, date_str: str):
-        from datetime import datetime
-
-        dt = datetime.strptime(date_str, "%Y-%m-%d")
-        self.current_date = dt
-        self.update_week()
-
-        meals_for_day = self.meal_data.get(date_str, {})
-        self.meal_data_changed.emit(date_str, meals_for_day)
 
     def select_day(self, date_str: str):
         """
