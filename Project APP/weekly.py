@@ -48,10 +48,8 @@ class WeeklySummaryPage(QWidget):
         self._daily_page.go_to_weekly_meal.connect(lambda: self._show(2))
         # daily_meal  → 😊  → Weekly Mood
         self._daily_page.go_to_mood.connect(lambda: self._show(1))
-
         # weekly_mood → 📅  → Weekly Meals
         self._mood_page.go_to_weekly_meal.connect(lambda: self._show(2))
-
         # weekly_meal → emoji → Weekly Mood
         self._weekly_meal.go_to_mood.connect(lambda: self._show(1))
         # weekly_meal → date → Daily Meals and set date

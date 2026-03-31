@@ -180,8 +180,6 @@ class MainWindow(QMainWindow):
         self.daily_page.meal_data_changed.connect(self.handle_meal_data_change)
         self.meal_planner.date_picked.connect(self.open_daily_page)
         self.dashboard_page.meal_added.connect(self.handle_dashboard_meal_added)
-
-        # โหลด DB ครั้งเดียว แล้ว sync ทุก page
         self.meal_planner.meal_data = self.meal_data
         self.weekly_page._weekly_meal.meal_data = self.meal_data
         self.meal_planner.update_week()

@@ -528,9 +528,6 @@ class DashboardPage(QWidget):
         self._meals_panel.foods_changed.connect(self.update_dashboard_macros)
         self._meals_panel.foods_changed.connect(self._handle_foods_changed)
         self._meals_panel.meal_added.connect(self._handle_meal_added)
-        # NOTE: do NOT also connect meal_added.emit directly here —
-        # _handle_meal_added already calls self.meal_added.emit, so connecting
-        # both causes every add to be emitted (and saved) twice.
         mv.addWidget(self._meals_panel)
         v.addWidget(meals_card)
 
@@ -570,13 +567,6 @@ class DashboardPage(QWidget):
         bmi = user.get("bmi", 0)
         tdee = user.get("tdee", 0)
 
-    # Example display (you can customize UI)
-        #self.bmi_label.setText(f"{bmi:.2f}")
-        #self.tdee_label.setText(f"{int(tdee)}")
-
-    # If you have labels:
-    # self.bmi_label.setText(str(bmi))
-    # self.tdee_label.setText(str(tdee))
     def update_data(self, bmi, tdee):
         self.bmi_label.setText(f"{bmi:.2f}")
         self.tdee_label.setText(f"{int(tdee)}")

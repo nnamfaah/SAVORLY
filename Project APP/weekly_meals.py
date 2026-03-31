@@ -175,11 +175,10 @@ class MealCell(QFrame):
 
     def _load_existing(self):
         _MACRO_KEYS = {"protein", "carbs", "fat", "vitamins", "minerals", "mineral",
-                       "date", "meal", "quantity"}  # keys ที่ไม่ใช่ชื่ออาหาร
+                       "date", "meal", "quantity"}
         for food in self.parent_page.meal_data.get(self.date_key, {}).get(self.meal_name, []):
             name = None
             if isinstance(food, dict):
-                # food dict จาก dashboard มี "name" key เสมอ
                 name = food.get("name") or food.get("food_name") or food.get("text")
             elif isinstance(food, str):
                 name = food
@@ -224,7 +223,7 @@ class MealCell(QFrame):
     def show_detail(self,item):
         DetailPopup(item.text().split(". ",1)[1]).exec()
 
-#  Meal Label Cell (column 0) — แสดง icon + meal name
+#  Meal Label Cell: show icon + meal name
 class MealLabelCell(QWidget):
     def __init__(self, icon, name):
         super().__init__()
@@ -303,10 +302,8 @@ class MealPlannerPage(QWidget):
         self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-        # ซ่อน vertical header
         self.table.verticalHeader().setVisible(False)
 
-        # horizontal header: col0="PERIOD", col1-7=วัน
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
 
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
@@ -319,7 +316,6 @@ class MealPlannerPage(QWidget):
 
         main_layout.addWidget(self.table, stretch=1)
 
-        # เปิด drag-drop บน table ให้ drop event ผ่านลงไปถึง MealCell/FoodList
         self.table.setAcceptDrops(True)
         self.table.viewport().setAcceptDrops(True)
         self.table.setDragDropMode(QTableWidget.DragDrop)

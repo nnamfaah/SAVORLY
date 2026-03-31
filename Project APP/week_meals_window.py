@@ -232,7 +232,6 @@ class FoodList(QListWidget):
         item = self.currentItem()
         if not item:
             return
-        # ส่งเฉพาะชื่ออาหาร (ตัด "1. " prefix ออก)
         raw = item.text()
         food_name = raw.split(". ", 1)[1] if ". " in raw else raw
         mime = QMimeData()
@@ -434,7 +433,7 @@ class MealCell(QFrame):
         foods = self.parent_page.meal_data.get(self.date_key, {}).get(self.meal_name, [])
         if food_name in foods:
             foods.remove(food_name)
-        # ลบออกจาก QListWidget
+   
         for i in range(self.food_list.count()):
             txt = self.food_list.item(i).text()
             name = txt.split(". ", 1)[1] if ". " in txt else txt
@@ -623,7 +622,6 @@ class MealPlannerPage(QWidget):
         self.table.verticalHeader().setSectionResizeMode(QHeaderView.Stretch)
         main_layout.addWidget(self.table, stretch=1)
 
-        # เปิด drag-drop บน table ให้ drop event ผ่านลงไปถึง MealCell/FoodList
         self.table.setAcceptDrops(True)
         self.table.viewport().setAcceptDrops(True)
         self.table.setDragDropMode(QTableWidget.DragDrop)

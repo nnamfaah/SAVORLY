@@ -309,12 +309,11 @@ class DailyMealsSubPage(QWidget):
         print(f"[DEBUG] daily sync_from_main: date={date_str}")
         self._current_date = QDate.fromString(date_str, "yyyy-MM-dd")
         if isinstance(meal_data, dict) and meal_data:
-            # ถ้า key แรกเป็น dict แสดงว่าส่ง meal_data ทั้งก้อน (หลายวัน)
             first_val = next(iter(meal_data.values()), None)
             if isinstance(first_val, dict):
-                self.meal_data = meal_data          # รับทั้งก้อน
+                self.meal_data = meal_data
             else:
-                self.meal_data[date_str] = meal_data  # รับแค่วันเดียว
+                self.meal_data[date_str] = meal_data
         self._refresh()
 
     def set_date(self, date_str):
