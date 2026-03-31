@@ -528,7 +528,9 @@ class DashboardPage(QWidget):
         self._meals_panel.foods_changed.connect(self.update_dashboard_macros)
         self._meals_panel.foods_changed.connect(self._handle_foods_changed)
         self._meals_panel.meal_added.connect(self._handle_meal_added)
-        self._meals_panel.meal_added.connect(self.meal_added.emit)
+        # NOTE: do NOT also connect meal_added.emit directly here —
+        # _handle_meal_added already calls self.meal_added.emit, so connecting
+        # both causes every add to be emitted (and saved) twice.
         mv.addWidget(self._meals_panel)
         v.addWidget(meals_card)
 

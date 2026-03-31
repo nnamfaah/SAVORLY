@@ -114,11 +114,15 @@ class FoodList(QListWidget):
         food = text.split(". ", 1)[1] if ". " in text else text
         self.addItem(f"{self.count()+1}. {food}")
         e.accept()
-        # บันทึกลง meal_data
+        # บันทึกลง meal_data และ emit signal ให้ MainWindow save/sync
         if self.meal_cell:
             mc = self.meal_cell
             mc.parent_page.meal_data.setdefault(mc.date_key, {}).setdefault(mc.meal_name, []).append(food)
             mc.parent_page.update_mood()
+            mc.parent_page.meal_data_changed.emit(
+                mc.date_key,
+                mc.parent_page.meal_data.get(mc.date_key, {})
+            )
 
 class MealCell(QFrame):
     def __init__(self, meal_name, row, col, parent_page, date_key):
@@ -150,6 +154,11 @@ class MealCell(QFrame):
             self.food_list.addItem(f"{self.food_list.count()+1}. {text.strip()}")
             self.parent_page.meal_data.setdefault(self.date_key,{}).setdefault(self.meal_name,[]).append(text.strip())
             self.parent_page.update_mood()
+            # Emit so MainWindow can save & sync daily page
+            self.parent_page.meal_data_changed.emit(
+                self.date_key,
+                self.parent_page.meal_data.get(self.date_key, {})
+            )
     
     def delete_food(self,item):
         name=item.text().split(". ",1)[1]
@@ -181,6 +190,11 @@ class MealLabelCell(QWidget):
 class MealPlannerPage(QWidget):
     go_to_mood = Signal()
     go_to_daily = Signal(QDate)
+    meal_data_changed = Signal(str, dict)   # date_key, meals_for_day
+    day_selected = Signal(str)              # date_str
+    jump_to_week_day = Signal(str)          # date_str
+    date_picked = Signal(str)              # date_str
+
     def __init__(self):
         super().__init__()
         self.current_date = datetime.today()
@@ -308,6 +322,19 @@ class MealPlannerPage(QWidget):
         self.current_date-=timedelta(weeks=1); self.update_week()
     def next_week(self):
         self.current_date+=timedelta(weeks=1); self.update_week()
+
+    def select_day(self, date_str: str):
+        """Jump the weekly view to the week containing date_str."""
+        try:
+            dt = datetime.strptime(date_str, "%Y-%m-%d")
+            self.current_date = dt
+            self.update_week()
+        except Exception:
+            pass
+
+    # alias used by weekly.py
+    def select_date(self, date_str: str):
+        self.select_day(date_str)
 
     def calculate_mood(self):
         dks=self.get_week_date_keys()
