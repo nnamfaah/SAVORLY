@@ -293,7 +293,7 @@ class _RecPanel(QWidget):
 class _AddMealsPanel(QWidget):
     slot_changed  = Signal(str)
     foods_changed = Signal(list)
-    meal_added    = Signal()
+    meal_added    = Signal(str, dict)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -377,11 +377,13 @@ class _AddMealsPanel(QWidget):
                 "meal": current_slot,   
                 "date": date_key             
             }
+            date_key = datetime.now().strftime("%Y-%m-%d")
 
             display_text = f"{name} • {portion_name} x{quantity}"
 
             self._foods.append(normalized_food)
             self._add_chip(display_text, normalized_food)
+            self.meal_added.emit(date_key, normalized_food)
         
         self._foods.extend(new_foods)
 
@@ -390,7 +392,6 @@ class _AddMealsPanel(QWidget):
 
         if not self._has_added_once:
             self._has_added_once = True
-            self.meal_added.emit()
 
         self.foods_changed.emit(self._foods)
 
@@ -452,13 +453,14 @@ class _AddMealsPanel(QWidget):
 # DashboardPage
 class DashboardPage(QWidget):
     open_planner_requested = Signal()
-    meal_added = Signal()
+    meal_added = Signal(str, dict)
+    foods_changed = Signal(list)
 
     def __init__(self, parent=None):
         super().__init__(parent); self.setStyleSheet(ss.page_bg)
         self.load_user_data()
-        self._tdee_target = 2000
         self._current_calories = 0
+        self._tdee_target = 2000
 
         scroll = QScrollArea(); scroll.setWidgetResizable(True)
         scroll.setStyleSheet(ss.scroll_transparent)
@@ -524,6 +526,9 @@ class DashboardPage(QWidget):
         self._meals_panel = _AddMealsPanel()
         self._meals_panel.slot_changed.connect(self._timeline.set_active)
         self._meals_panel.foods_changed.connect(self.update_dashboard_macros)
+        self._meals_panel.foods_changed.connect(self._handle_foods_changed)
+        self._meals_panel.meal_added.connect(self._handle_meal_added)
+        #self._meals_panel.meal_added.connect(self.meal_added.emit)
         mv.addWidget(self._meals_panel)
         v.addWidget(meals_card)
 
@@ -692,3 +697,44 @@ class DashboardPage(QWidget):
             );
             border-radius: 70px;
         """)
+
+    def update_calorie_visual(self, total_calories, tdee): 
+        self._current_calories = total_calories
+        self._tdee_target = tdee
+        self._update_donut()
+
+
+    def update_progress(self, percent):
+        self.donut.setStyleSheet(f"""
+            background: qradialgradient(
+                cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,
+                stop:0.6 #B7C9A8,
+                stop:0.601 rgba(255,255,255,0.3),
+                stop:{0.6 + (0.4 * percent)} white,
+                stop:{0.601 + (0.4 * percent)} rgba(255,255,255,0.3)
+            );
+            border-radius: 70px;
+        """)
+
+    def update_calorie_visual(self, eaten, tdee):
+        remaining = max(tdee - eaten, 0)
+        percent = remaining / tdee if tdee else 0
+
+        self.update_progress(percent)
+
+    def _handle_meal_added(self, food): #emit to mainwindow
+        from datetime import datetime
+        date_key = datetime.now().strftime("%Y-%m-%d")
+        self.meal_added.emit(date_key, food)
+
+    def _handle_foods_changed(self, foods):
+        """
+        Slot to handle when _AddMealsPanel emits foods_changed.
+        `foods` is a list of dicts representing meals.
+        """
+        self.update_dashboard_macros(foods)
+        total_calories = sum(
+            f["macros"]["protein"]*4 + f["macros"]["carbs"]*4 + f["macros"]["fat"]*9
+            for f in foods
+        )
+        self.update_calorie_visual(total_calories, self._tdee_target)

@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import QDate, Qt, QMimeData, Signal, QRect
 from PySide6.QtGui import QFont, QDrag, QColor, QPainter, QPen
+from collections import defaultdict
 
 #Calendar Popup
 class CalendarDialog(QDialog):
@@ -125,7 +126,7 @@ class CellDetailPopup(QDialog):
         hdr.setFont(QFont("Segoe UI", 9, QFont.Bold))
         hdr.setStyleSheet("""
             color: #5a7a5c;
-            background: #e4edd e;
+            background: #e4edde;
             padding: 10px 16px 8px 16px;
             border-top-left-radius: 14px;
             border-top-right-radius: 14px;
@@ -292,9 +293,10 @@ class MealCell(QFrame):
         label = QLabel("Food name:")
         input_field = QLineEdit()
         input_field.setPlaceholderText("Enter food name")
+        self.parent_page.meal_data.setdefault(self.date_key, {})
         self.parent_page.meal_data_changed.emit(
             self.date_key,
-            self.parent_page.meal_data[self.date_key]
+            self.parent_page.meal_data.get(self.date_key, {})
         )
 
         ok_btn = QPushButton("OK")
@@ -373,7 +375,7 @@ class MealCell(QFrame):
         self.parent_page.update_mood()
         self.parent_page.meal_data_changed.emit(
             self.date_key,
-            self.parent_page.meal_data[self.date_key]
+            self.parent_page.meal_data.get(self.date_key, {})
         )
 
     def _delete_by_name(self, food_name):
@@ -482,7 +484,7 @@ class MealPlannerPage(QWidget):
         self.current_date = datetime.today()
         self.meal_types = ["Breakfast","Lunch","Dinner","Night","Snack","Note"]
         self.meal_icons = {"Breakfast":"☀","Lunch":"≡","Dinner":"⊟","Night":"☽","Snack":"◎","Note":"☐"}
-        self.meal_data = {}
+        self.meal_data = defaultdict(dict)
         self.setStyleSheet("""
             MealPlannerPage { background: #f0f2ec; }
             QTableWidget {
@@ -680,6 +682,10 @@ class MealPlannerPage(QWidget):
         if date_str in week_keys:
             col_index = week_keys.index(date_str) + 1  
             self._on_col_hovered(col_index)
+
+    def set_meal_data(self, meal_data):
+        self.meal_data = meal_data
+        self.update_week()
 
 
 if __name__=="__main__":
