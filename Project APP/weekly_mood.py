@@ -6,20 +6,7 @@ from PySide6.QtCore import Qt, QDate, Signal
 import stylesheet as ss
 
 # ── Mood data ─────────────────────────────────────────────────────────────
-MOOD_DATA = [
-    (
-        QDate(2026, 3, 22),
-        "Excellent Mood Overall", "😍",
-        "more energetic!",
-        "Thus, next week you should try more activities. Let's clear your energy.",
-    ),
-    (
-        QDate(2026, 3, 15),
-        "Calm and Balanced", "😊",
-        "steady and focused!",
-        "Keep up the balanced routine — your body loves consistency.",
-    ),
-]
+MOOD_DATA = []
 
 def _week_label(start: QDate) -> str:
     end = start.addDays(6)
@@ -144,7 +131,18 @@ class WeeklyMoodSubPage(QWidget):
         return outer
 
     def _refresh(self):
-        if not (0 <= self._idx < self._total): return
+        if not self._total or not (0 <= self._idx < self._total):
+            self._week_lbl.setText("No data yet")
+            self._emoji_lbl.setText("😶")
+            self._title_lbl.setText("No mood recorded")
+            self._content_lbl.setText(
+                "<ul style='margin-left:-20px'>"
+                "<li>Start logging your meals to see your weekly mood insights.</li>"
+                "</ul>"
+            )
+            self._btn_prev.setEnabled(False)
+            self._btn_next.setEnabled(False)
+            return
         start, mood, emoji, energy, advice = MOOD_DATA[self._idx]
 
         self._week_lbl.setText(_week_label(start))

@@ -370,6 +370,7 @@ class _AddMealsPanel(QWidget):
                 "minerals": int(raw_macros.get("minerals", raw_macros.get("mineral", 0)))
             }
 
+            date_key = datetime.now().strftime("%Y-%m-%d")
             normalized_food = {
                 "name": name,
                 "macros": macros,
@@ -377,7 +378,6 @@ class _AddMealsPanel(QWidget):
                 "meal": current_slot,   
                 "date": date_key             
             }
-            date_key = datetime.now().strftime("%Y-%m-%d")
 
             display_text = f"{name} • {portion_name} x{quantity}"
 
@@ -528,7 +528,7 @@ class DashboardPage(QWidget):
         self._meals_panel.foods_changed.connect(self.update_dashboard_macros)
         self._meals_panel.foods_changed.connect(self._handle_foods_changed)
         self._meals_panel.meal_added.connect(self._handle_meal_added)
-        #self._meals_panel.meal_added.connect(self.meal_added.emit)
+        self._meals_panel.meal_added.connect(self.meal_added.emit)
         mv.addWidget(self._meals_panel)
         v.addWidget(meals_card)
 
@@ -722,9 +722,7 @@ class DashboardPage(QWidget):
 
         self.update_progress(percent)
 
-    def _handle_meal_added(self, food): #emit to mainwindow
-        from datetime import datetime
-        date_key = datetime.now().strftime("%Y-%m-%d")
+    def _handle_meal_added(self, date_key, food): #emit to mainwindow
         self.meal_added.emit(date_key, food)
 
     def _handle_foods_changed(self, foods):

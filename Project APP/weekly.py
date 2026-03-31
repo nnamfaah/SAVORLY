@@ -110,6 +110,13 @@ class WeeklySummaryPage(QWidget):
 
     def set_meal_data(self, meal_data):
         self.meal_data = meal_data
+        self._weekly_meal.meal_data = meal_data
+        self._weekly_meal.update_week()
+        self._daily_page.meal_data = meal_data
+        if hasattr(self._daily_page, "_current_date"):
+            today = self._daily_page._current_date.toString("yyyy-MM-dd")
+            if today in meal_data:
+                self._daily_page.sync_from_main(today, meal_data[today])
 
     def load_day(self, date_str, meals):
         """Load selected day data"""

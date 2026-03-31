@@ -9,7 +9,7 @@ from PySide6.QtGui import QFontDatabase, QFont, QPixmap, QIcon, QColor
 from PySide6.QtCore import Qt, QSize, Signal, QPropertyAnimation, QEasingCurve
 
 from mainwindow import MainWindow 
-from Database_sor import login_user, register_user, user_has_health_data, get_user_by_id, init_database, run_migrations
+from Database_sor import login_user, register_user, user_has_health_data, get_user_by_id, init_database, run_migrations, fix_db_on_startup, update_password
 from session import Session
 from dashboard import DashboardPage
 from main_input import MainWindow_input
@@ -878,6 +878,15 @@ class LoginWindow(QMainWindow):
         if not username:
             QMessageBox.warning(self, "Search Failed", "Please enter your username or email.")
             return
+        conn = __import__('Database_sor').connect()
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM users WHERE username=?", (username,))
+        user = cur.fetchone()
+        conn.close()
+        if not user:
+            QMessageBox.warning(self, "Not Found", "Username not found.")
+            return
+        self._reset_username = username
         self.show_reset_new()
 
     def handle_reset_password(self, new_password, confirm_password):
@@ -887,10 +896,21 @@ class LoginWindow(QMainWindow):
         if new_password != confirm_password:
             QMessageBox.warning(self, "Reset Failed", "Passwords do not match.")
             return
-        QMessageBox.information(self, "Password Reset", "Your password has been reset successfully!")
-        self.reset_new_page.clear_inputs()
-        self.reset_search_page.clear_inputs()
-        self.show_login()
+        username = getattr(self, "_reset_username", None)
+        if not username:
+            QMessageBox.warning(self, "Error", "Session expired, please try again.")
+            self.show_login()
+            return
+        
+        success, msg = update_password(username, new_password)
+        if success:
+            QMessageBox.information(self, "Password Reset", "Your password has been reset successfully!")
+            self.reset_new_page.clear_inputs()
+            self.reset_search_page.clear_inputs()
+            self._reset_username = None
+            self.show_login()
+        else:
+            QMessageBox.warning(self, "Error", msg)
 
     def refresh_user(self):
         """
@@ -908,6 +928,8 @@ class LoginWindow(QMainWindow):
 def main():
     init_database()
     run_migrations()
+    fix_db_on_startup() 
+
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
     FontManager()

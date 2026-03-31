@@ -137,9 +137,13 @@ class MealCell(QFrame):
         self._load_existing()
 
     def _load_existing(self):
-        for food in self.parent_page.meal_data.get(self.date_key,{}).get(str(self.row),[]):
-            self.food_list.addItem(f"{self.food_list.count()+1}. {food}")
-    
+        for food in self.parent_page.meal_data.get(self.date_key, {}).get(str(self.row), []):
+            if isinstance(food, dict):
+                name = food.get("name", str(food))
+            else:
+                name = str(food)
+            self.food_list.addItem(f"{self.food_list.count()+1}. {name}")
+        
     def add_food(self):
         text,ok=QInputDialog.getText(self,"Add Food","Food name:")
         if ok and text.strip():

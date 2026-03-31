@@ -183,9 +183,8 @@ class MainWindow(QMainWindow):
         today = QDate.currentDate().toString("yyyy-MM-dd")
         self.daily_page.sync_from_main(today, self.meal_data)
 
-        self.dashboard_page.meal_added.connect(self.handle_meal_data_change)
+        # self.dashboard_page.meal_added.connect(self.handle_meal_data_change)
         
-
         self.meal_planner.date_picked.connect(self.open_daily_page)
         self.dashboard_page.meal_added.connect(self.handle_dashboard_meal_added)
         saved_data = load_meal_data(Session.user_id)
@@ -284,12 +283,14 @@ class MainWindow(QMainWindow):
         CENTRAL SYNC CONTROLLER
         Syncs meal data across Dashboard, Daily page, Weekly page, and Meal Planner.
         """
-
+        print(f"[DEBUG] handle_meal_data_change called: date={date}")
+        
         # --- 1️⃣ Update central meal_data ---
         self.meal_data[date] = meals_for_day
 
         # --- 2️⃣ Sync Meal Planner and Weekly page ---
         self.meal_planner.meal_data = self.meal_data
+        self.meal_planner.update_week()
         if hasattr(self.weekly_page, "set_meal_data"):
             self.weekly_page.set_meal_data(self.meal_data)
 
@@ -298,6 +299,14 @@ class MainWindow(QMainWindow):
             current_date_str = self.daily_page._current_date.toString("yyyy-MM-dd")
             if current_date_str == date:
                 self.daily_page.sync_from_main(date, meals_for_day)
+
+        # --- 3b. Sync daily_page ใน weekly_page ด้วย ---
+        if hasattr(self.weekly_page, "_daily_page"):
+            wp_daily = self.weekly_page._daily_page
+            if hasattr(wp_daily, "_current_date"):
+                wp_date = wp_daily._current_date.toString("yyyy-MM-dd")
+                if wp_date == date:
+                    wp_daily.sync_from_main(date, meals_for_day)
 
         # --- 4️⃣ Build meal profiles and compute total calories ---
         meal_profiles = []
@@ -377,6 +386,7 @@ class MainWindow(QMainWindow):
 
     def handle_dashboard_meal_added(self, date, food):
         """Inject food added from Dashboard into central meal_data."""
+        print(f"[DEBUG] handle_dashboard_meal_added called: date={date}, food={food}")
         meal_map = {"Breakfast": 0, "Lunch": 1, "Dinner": 2, "Late-night": 3}
         meal_name = food.get("meal", "Lunch")
         row = str(meal_map.get(meal_name, 1))
@@ -435,5 +445,3 @@ class MainWindow(QMainWindow):
             self.daily_page.update_tdee(tdee)
 
         self._stack.setCurrentWidget(self.dashboard_page)
-
-    

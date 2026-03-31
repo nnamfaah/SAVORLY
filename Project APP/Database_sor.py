@@ -71,6 +71,8 @@ def init_database():
         user_id INTEGER NOT NULL,
         date TEXT NOT NULL,
         meal_data TEXT NOT NULL,
+        meal_type TEXT NOT NULL DEFAULT 'general',
+        food TEXT NOT NULL DEFAULT '',
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         UNIQUE(user_id, date)
     );
@@ -122,6 +124,31 @@ def run_migrations():
     conn.commit()
     conn.close()
 
+def fix_db_on_startup():
+    conn = connect()
+    cur = conn.cursor()
+
+    for col, definition in [
+        ("meal_data", "TEXT DEFAULT '{}'"),
+        ("meal_type", "TEXT DEFAULT 'general'"),
+        ("food",      "TEXT DEFAULT ''"),
+    ]:
+        try:
+            cur.execute(f"ALTER TABLE meals ADD COLUMN {col} {definition}")
+        except sqlite3.OperationalError:
+            pass
+
+    cur.execute("UPDATE meals SET meal_data = '{}' WHERE meal_data IS NULL")
+    cur.execute("DELETE FROM meals WHERE date = 'week_update'")
+    cur.execute("""
+        DELETE FROM meals WHERE id NOT IN (
+            SELECT MIN(id) FROM meals GROUP BY user_id, date
+        )
+    """)
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_date ON meals(user_id, date)")
+
+    conn.commit()
+    conn.close()
 # ───────────────────────────────
 # ENSURE UNIQUE CONSTRAINTS
 # ───────────────────────────────
@@ -146,6 +173,21 @@ def hash_password(password, salt=None):
 def verify_password(input_password, stored_hash, salt):
     hashed, _ = hash_password(input_password, salt)
     return hashed == stored_hash
+
+def update_password(username, new_password):
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM users WHERE username=?", (username,))
+    user = cur.fetchone()
+    if not user:
+        conn.close()
+        return False, "not found"
+    hashed, salt = hash_password(new_password)
+    cur.execute("UPDATE users SET password_hash=?, salt=? WHERE username=?",
+                (hashed, salt, username))
+    conn.commit()
+    conn.close()
+    return True, "Password changed successfully"
 
 # ───────────────────────────────
 # AUTH SYSTEM

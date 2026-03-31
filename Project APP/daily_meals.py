@@ -253,6 +253,7 @@ class DailyMealsSubPage(QWidget):
 
         date_key = self._current_date.toString("yyyy-MM-dd")
         day_meals = self.meal_data.get(date_key, {})
+        print(f"[DEBUG] daily _refresh: date_key={date_key}, day_meals={day_meals}, all_keys={list(self.meal_data.keys())}")
 
         grouped = {meal: [] for meal, _ in self._MEALS}
         macros = {"protein":0,"carbs":0,"fat":0,"vitamins":0,"minerals":0}
@@ -305,11 +306,13 @@ class DailyMealsSubPage(QWidget):
 
     # ── Meal Data ──────────────────────────────────────
     def sync_from_main(self, date_str, meal_data):
+        print(f"[DEBUG] daily sync_from_main: date={date_str}, data={meal_data}")
         self._current_date = QDate.fromString(date_str, "yyyy-MM-dd")
-        self.meal_data = meal_data or {}
+        self.meal_data = {date_str: meal_data} if meal_data else {}
         self._refresh()
 
     def set_date(self, date_str):
+        print(f"[DEBUG] daily set_date: date={date_str}")
         self._current_date = QDate.fromString(date_str, "yyyy-MM-dd")
         self._refresh()
 
@@ -350,7 +353,9 @@ class DailyMealsSubPage(QWidget):
         if date_str:
             self._current_date = QDate.fromString(date_str, "yyyy-MM-dd")
 
-        self.meal_data = meals_for_day or {}
+        # ห่อด้วย date_key เพื่อให้ _refresh หาเจอ
+        key = self._current_date.toString("yyyy-MM-dd")
+        self.meal_data = {key: meals_for_day} if meals_for_day else {}
 
         # --- Compute macros ---
         macros = {"protein":0,"carbs":0,"fat":0,"vitamins":0,"minerals":0}
