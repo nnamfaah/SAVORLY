@@ -177,22 +177,19 @@ class MainWindow(QMainWindow):
         
         self.meal_planner.meal_data_changed.connect(self.handle_meal_data_change)
         self.daily_page.meal_data_changed.connect(self.handle_meal_data_change)
-        today = QDate.currentDate().toString("yyyy-MM-dd")
-        self.daily_page.sync_from_main(today, self.meal_data.get(today, {}))
-        self.weekly_page._weekly_meal.meal_data = self.meal_data
-        self.daily_page.sync_from_main(today, self.meal_data)
-
-        # self.dashboard_page.meal_added.connect(self.handle_meal_data_change)
-        
         self.meal_planner.date_picked.connect(self.open_daily_page)
         self.dashboard_page.meal_added.connect(self.handle_dashboard_meal_added)
-        saved_data = load_meal_data(Session.user_id)
-        if saved_data:
-            self.meal_data = saved_data or {}
 
-            self.meal_planner.meal_data = self.meal_data
-            self.weekly_page._weekly_meal.meal_data = self.meal_data
-            self.meal_planner.update_week() 
+        # โหลด DB ครั้งเดียว แล้ว sync ทุก page
+        saved_data = load_meal_data(Session.user_id) or {}
+        self.meal_data = saved_data
+        self.meal_planner.meal_data = self.meal_data
+        self.weekly_page._weekly_meal.meal_data = self.meal_data
+        self.meal_planner.update_week()
+        today = QDate.currentDate().toString("yyyy-MM-dd")
+        self.daily_page.meal_data = self.meal_data
+        self.daily_page._current_date = QDate.fromString(today, "yyyy-MM-dd")
+        self.daily_page._refresh()
 
         self.settings_page = SettingsPage()
         self.settings_page.calculate_requested.connect(self.handle_calculation)
@@ -293,19 +290,21 @@ class MainWindow(QMainWindow):
         if hasattr(self.weekly_page, "set_meal_data"):
             self.weekly_page.set_meal_data(self.meal_data)
 
-        # --- 3️⃣ Sync Daily page if showing this date ---
+        # --- 3️⃣ อัปเดต meal_data ของ daily_page และ weekly page ตลอดเวลา ---
+        self.daily_page.meal_data = self.meal_data
         if hasattr(self.daily_page, "_current_date"):
             current_date_str = self.daily_page._current_date.toString("yyyy-MM-dd")
             if current_date_str == date:
-                self.daily_page.sync_from_main(date, meals_for_day)
+                self.daily_page._refresh()
 
         # --- 3b. Sync daily_page ใน weekly_page ด้วย ---
         if hasattr(self.weekly_page, "_daily_page"):
             wp_daily = self.weekly_page._daily_page
+            wp_daily.meal_data = self.meal_data
             if hasattr(wp_daily, "_current_date"):
                 wp_date = wp_daily._current_date.toString("yyyy-MM-dd")
                 if wp_date == date:
-                    wp_daily.sync_from_main(date, meals_for_day)
+                    wp_daily._refresh()
 
         # --- 4️⃣ Build meal profiles and compute total calories ---
         meal_profiles = []
@@ -386,21 +385,15 @@ class MainWindow(QMainWindow):
     def handle_dashboard_meal_added(self, date, food):
         """Inject food added from Dashboard into central meal_data."""
         print(f"[DEBUG] handle_dashboard_meal_added called: date={date}, food={food}")
-        meal_map = {"Breakfast": 0, "Lunch": 1, "Dinner": 2, "Late-night": 3}
         meal_name = food.get("meal", "Lunch")
-        row = str(meal_map.get(meal_name, 1))
 
-        # Add food to central meal_data
+        # Add food to central meal_data ใช้ชื่อ meal เป็น key ตรงๆ
         self.meal_data.setdefault(date, {})
-        self.meal_data[date].setdefault(row, [])
-        self.meal_data[date][row].append(food)
+        self.meal_data[date].setdefault(meal_name, [])
+        self.meal_data[date][meal_name].append(food)
 
-        # Sync central meal_data to all pages
+        # Sync ทุก page พร้อมกัน
         self.handle_meal_data_change(date, self.meal_data[date])
-
-        # **Update Daily page immediately**
-        if hasattr(self.daily_page, "set_meals"):
-            self.daily_page.set_meals(self.meal_data[date], date_str=date)
 
     def save_results(self, bmi, tdee):
         from Database_sor import save_user_profile, get_user_profile

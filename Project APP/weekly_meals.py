@@ -117,13 +117,13 @@ class FoodList(QListWidget):
         # บันทึกลง meal_data
         if self.meal_cell:
             mc = self.meal_cell
-            mc.parent_page.meal_data.setdefault(mc.date_key, {}).setdefault(str(mc.row), []).append(food)
+            mc.parent_page.meal_data.setdefault(mc.date_key, {}).setdefault(mc.meal_name, []).append(food)
             mc.parent_page.update_mood()
 
 class MealCell(QFrame):
     def __init__(self, meal_name, row, col, parent_page, date_key):
         super().__init__()
-        self.row=row; self.col=col; self.parent_page=parent_page; self.date_key=date_key
+        self.meal_name=meal_name; self.row=row; self.col=col; self.parent_page=parent_page; self.date_key=date_key
         self.setObjectName(f"cell_{row}_{col}")
         self.setStyleSheet(f"QFrame#cell_{row}_{col}{{background-color:#a8bb96;border-radius:10px;}}")
         lay=QVBoxLayout(self); lay.setContentsMargins(5,5,5,5); lay.setSpacing(3); lay.setAlignment(Qt.AlignCenter)
@@ -137,7 +137,7 @@ class MealCell(QFrame):
         self._load_existing()
 
     def _load_existing(self):
-        for food in self.parent_page.meal_data.get(self.date_key, {}).get(str(self.row), []):
+        for food in self.parent_page.meal_data.get(self.date_key, {}).get(self.meal_name, []):
             if isinstance(food, dict):
                 name = food.get("name", str(food))
             else:
@@ -148,12 +148,12 @@ class MealCell(QFrame):
         text,ok=QInputDialog.getText(self,"Add Food","Food name:")
         if ok and text.strip():
             self.food_list.addItem(f"{self.food_list.count()+1}. {text.strip()}")
-            self.parent_page.meal_data.setdefault(self.date_key,{}).setdefault(str(self.row),[]).append(text.strip())
+            self.parent_page.meal_data.setdefault(self.date_key,{}).setdefault(self.meal_name,[]).append(text.strip())
             self.parent_page.update_mood()
     
     def delete_food(self,item):
         name=item.text().split(". ",1)[1]
-        foods=self.parent_page.meal_data.get(self.date_key,{}).get(str(self.row),[])
+        foods=self.parent_page.meal_data.get(self.date_key,{}).get(self.meal_name,[])
         if name in foods: foods.remove(name)
         self.food_list.takeItem(self.food_list.row(item))
         for i in range(self.food_list.count()):

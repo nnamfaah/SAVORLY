@@ -306,10 +306,15 @@ class DailyMealsSubPage(QWidget):
 
     # ── Meal Data ──────────────────────────────────────
     def sync_from_main(self, date_str, meal_data):
-        print(f"[DEBUG] daily sync_from_main: date={date_str}, data={meal_data}")
+        print(f"[DEBUG] daily sync_from_main: date={date_str}")
         self._current_date = QDate.fromString(date_str, "yyyy-MM-dd")
-        if meal_data:
-            self.meal_data[date_str] = meal_data
+        if isinstance(meal_data, dict) and meal_data:
+            # ถ้า key แรกเป็น dict แสดงว่าส่ง meal_data ทั้งก้อน (หลายวัน)
+            first_val = next(iter(meal_data.values()), None)
+            if isinstance(first_val, dict):
+                self.meal_data = meal_data          # รับทั้งก้อน
+            else:
+                self.meal_data[date_str] = meal_data  # รับแค่วันเดียว
         self._refresh()
 
     def set_date(self, date_str):
@@ -363,7 +368,7 @@ class DailyMealsSubPage(QWidget):
         macros = {"protein":0,"carbs":0,"fat":0,"vitamins":0,"minerals":0}
         grouped = {meal: [] for meal, _ in getattr(self, "_MEALS", [])}
 
-        for meal_type, foods in self.meal_data.items():
+        for meal_type, foods in (meals_for_day or {}).items():
             for food in foods:
                 if isinstance(food, dict):
                     name = food.get("name", "Unknown")
